@@ -1,6 +1,21 @@
 # Cierre de QA local — 9 de octubre de 2026
 
-## Alcance y resultado
+## Estado vigente de esta actualización documental
+
+**Fecha de evidencia:** 9 de octubre de 2026. Esta sección prevalece sobre recuentos y resultados posteriores conservados como historial. La evidencia es **local** y no acredita aceptación, despliegue, producción ni E2E de negocio.
+
+- Checkout dedicado autorizado en `main`; commits locales `55d1e99` (harness unitario tolerante a CRLF) y `a413d21` (limpieza de logging de sesión Flutter). No hubo push ni despliegue.
+- Entorno: Windows 10 x64; Node `v24.19.0`, pnpm `11.25.0`, Flutter `3.47.5` stable y Dart `3.13.4`; no hay dispositivos ADB conectados.
+- `pnpm run test:unit`: salida 0, **222 pass, 0 fail, 0 skipped**. `test:integration` tiene 3 pruebas **SKIP** porque `DLC_API_BASE_URL` no está definido; no contactó endpoint alguno.
+- Como comprobaciones locales previas en Node 24: build, typecheck, lint; contratos 93/93, web 15/15, contrato Flutter 1/1 y verificadores estructurales de reporte/aceptación/release. No son recorridos E2E de negocio ni walkthrough de navegador.
+- Flutter actual: `flutter analyze --no-pub` pasa en `dlc_api`, `dlc_customers` y `dlc_operations`; pruebas Dart actuales: Clientes 1/1 y Operaciones 4/4. `dlc_api` no tiene directorio `test/`. La limpieza eliminó una comparación nula inalcanzable en `employee_session.dart:2241`; no cambió comportamiento fuente.
+- APK de Operaciones reconstruido con `flutter build apk --debug --dart-define=DLC_API_BASE_URL=http://10.0.2.2:4000/api/v1`: salida 0, 179,113,952 bytes, SHA-256 `123C1F5D0F018866107EA359B094CDA5148ED8968E4A197B1DD93B6A00D49BD0`; canónico y alias son idénticos. No se instaló. El APK de Clientes no se reconstruyó: falta URL y publishable key de Supabase QA; el archivo existente permanece sin cambios, SHA-256 `bfe141f3190b7caeafbc68d8030cdd30f4695ec582f6d1f1cf84374362049e64`.
+- Paquete fuente QA regenerado y verificado: 692 entradas, 108 migraciones locales hasta 0108 y SHA-256 02c5a2d1ec61a7c6f4ee9cf622de221ee95804d234695330ca0255f6587eb3f4. El dato describe el paquete local; no acredita migraciones remotas de Supabase.
+- El catálogo fuente local tiene 108 migraciones hasta 0108. Esta sesión no abrió conexión a Supabase, no ejecutó SQL, seeds, API, concurrencia, autenticación/persistencia de sesión ni flujos remotos. Tampoco hubo navegador autenticado.
+- RDD está activo por defecto, pero no hay revisión ni recibo/PASS: la evaluación del rango comprometido es de riesgo alto y STATUS solicita `external.select_intended_untracked` para cuatro caches/locks Flutter sin seguimiento; esa captura no está disponible en este runtime. Las seis modificaciones Windows de plugin (solo final de línea) y esos cuatro archivos sin seguimiento no se deben stagear/restaurar.
+- Bloqueadores: destino QA aislado identificado con `DLC_API_BASE_URL`, login/tenant de prueba, URL y publishable key de Supabase QA, navegador autenticado y dispositivo Android. Mailjet, sandbox de tarjeta, DTE, push y Mac/iOS/Keychain siguen sin evidencia, credenciales ni aprobación aplicable; la contraseña antigua expuesta de Mailjet no debe reutilizarse.
+
+## Alcance y resultado histórico (checkout y máquina aislados anteriores; no evidencia vigente)
 
 Esta es la evidencia más reciente de la copia aislada `work/DLCGasolineras_Laboratorio22`. No se modificaron las dos carpetas originales del Escritorio ni se usaron datos, cuentas o servicios de producción. La carpeta de trabajo no es un checkout Git; no ejecutar `git add` desde ella.
 
@@ -35,7 +50,9 @@ Las pruebas SQL incluyen cash, ventas, inventario, compras, turnos, incidencias,
 
 Las migraciones 0099–0104 son correctivas y deben aplicarse en secuencia en cualquier QA futuro. No editar checksums de migraciones ya aplicadas en bases persistentes; este handoff solo verificó un esquema nuevo y desechable.
 
-## APK canónicos
+## APK canónicos históricos (no usar como evidencia vigente)
+
+> Los hashes de esta tabla describen outputs anteriores. Los hashes actuales verificados están en la evidencia vigente y en artifacts/qa-2026-10-09/SHA256SUMS.txt.
 
 Los nombres con guion bajo son los builds QA que se documentan y deben instalarse:
 
@@ -46,7 +63,7 @@ Los nombres con guion bajo son los builds QA que se documentan y deben instalars
 
 Hay copias antiguas con nombres `dlc-operations-debug-qa.apk` y `dlc-customers-debug-qa.apk`. La de Operaciones **no** es el build QR documentado; ambas copias con guion son versiones sustituidas. Se conservan para no borrar archivos del usuario, pero no deben instalarse. Ver `artifacts/qa-2026-10-09/ARTIFACTS.md` y `SHA256SUMS.txt`.
 
-El paquete fuente QA contiene 711 archivos, CRC íntegro, las 104 migraciones y el scanner QR; el ZIP no contiene APK, `.db` de caché ni `%SystemDrive%`. Su SHA-256 se registra en `artifacts/qa-2026-10-09/SHA256SUMS.txt`.
+Registro histórico sin revalidación en esta sesión: el paquete fuente QA contenía 711 archivos, CRC íntegro, 104 migraciones y el scanner QR; se afirmaba que el ZIP no contenía APK, `.db` de caché ni `%SystemDrive%`. No reutilizar ese conteo ni su SHA-256 como dato actual: el ZIP se regenerará e inspeccionará en una tarea separada.
 
 ## Pendientes de aceptación y desarrollo
 
@@ -74,7 +91,7 @@ Se endureció la autenticación de cuentas asociadas a empleados: login, refresh
 
 Mailjet permanece pendiente: el navegador local no inició por un bloqueo del sandbox. No se configuró API key/secret, remitente o DNS, no se envió correo y aún hace falta la pantalla de activación. El detalle de credenciales requeridas y privacidad está en `docs/SEGURIDAD_SESIONES_CONCURRENCIA.md`.
 
-Paquete fuente actualizado tras los cambios: `artifacts/DLCGasolineras_Laboratorio22_source.zip`; el checksum SHA-256 se entrega en el archivo `.sha256` junto al ZIP.
+Referencia histórica de paquete: no usar su checksum anterior. El ZIP QA vigente contiene 692 entradas, 108 migraciones locales y SHA-256 02c5a2d1ec61a7c6f4ee9cf622de221ee95804d234695330ca0255f6587eb3f4.
 
 
 ## Seguimiento: ticket interno, despacho y caja web

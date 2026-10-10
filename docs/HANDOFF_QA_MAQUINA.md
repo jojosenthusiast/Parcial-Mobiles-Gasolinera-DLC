@@ -2,6 +2,21 @@
 
 # Handoff de QA en la máquina local
 
+## Estado vigente de esta actualización documental
+
+**Fecha de evidencia:** 9 de octubre de 2026. Esta sección prevalece sobre recuentos y resultados posteriores conservados como historial. La evidencia es **local** y no acredita aceptación, despliegue, producción ni E2E de negocio.
+
+- Checkout dedicado autorizado en `main`; commits locales `55d1e99` (harness unitario tolerante a CRLF) y `a413d21` (limpieza de logging de sesión Flutter). No hubo push ni despliegue.
+- Entorno: Windows 10 x64; Node `v24.19.0`, pnpm `11.25.0`, Flutter `3.47.5` stable y Dart `3.13.4`; no hay dispositivos ADB conectados.
+- `pnpm run test:unit`: salida 0, **222 pass, 0 fail, 0 skipped**. `test:integration` tiene 3 pruebas **SKIP** porque `DLC_API_BASE_URL` no está definido; no contactó endpoint alguno.
+- Como comprobaciones locales previas en Node 24: build, typecheck, lint; contratos 93/93, web 15/15, contrato Flutter 1/1 y verificadores estructurales de reporte/aceptación/release. No son recorridos E2E de negocio ni walkthrough de navegador.
+- Flutter actual: `flutter analyze --no-pub` pasa en `dlc_api`, `dlc_customers` y `dlc_operations`; pruebas Dart actuales: Clientes 1/1 y Operaciones 4/4. `dlc_api` no tiene directorio `test/`. La limpieza eliminó una comparación nula inalcanzable en `employee_session.dart:2241`; no cambió comportamiento fuente.
+- APK de Operaciones reconstruido con `flutter build apk --debug --dart-define=DLC_API_BASE_URL=http://10.0.2.2:4000/api/v1`: salida 0, 179,113,952 bytes, SHA-256 `123C1F5D0F018866107EA359B094CDA5148ED8968E4A197B1DD93B6A00D49BD0`; canónico y alias son idénticos. No se instaló. El APK de Clientes no se reconstruyó: falta URL y publishable key de Supabase QA; el archivo existente permanece sin cambios, SHA-256 `bfe141f3190b7caeafbc68d8030cdd30f4695ec582f6d1f1cf84374362049e64`.
+- Paquete fuente QA regenerado y verificado: 692 entradas, 108 migraciones locales hasta 0108 y SHA-256 02c5a2d1ec61a7c6f4ee9cf622de221ee95804d234695330ca0255f6587eb3f4. El dato describe el paquete local; no acredita migraciones remotas de Supabase.
+- El catálogo fuente local tiene 108 migraciones hasta 0108. Esta sesión no abrió conexión a Supabase, no ejecutó SQL, seeds, API, concurrencia, autenticación/persistencia de sesión ni flujos remotos. Tampoco hubo navegador autenticado.
+- RDD está activo por defecto, pero no hay revisión ni recibo/PASS: la evaluación del rango comprometido es de riesgo alto y STATUS solicita `external.select_intended_untracked` para cuatro caches/locks Flutter sin seguimiento; esa captura no está disponible en este runtime. Las seis modificaciones Windows de plugin (solo final de línea) y esos cuatro archivos sin seguimiento no se deben stagear/restaurar.
+- Bloqueadores: destino QA aislado identificado con `DLC_API_BASE_URL`, login/tenant de prueba, URL y publishable key de Supabase QA, navegador autenticado y dispositivo Android. Mailjet, sandbox de tarjeta, DTE, push y Mac/iOS/Keychain siguen sin evidencia, credenciales ni aprobación aplicable; la contraseña antigua expuesta de Mailjet no debe reutilizarse.
+
 Este handoff prepara la verificación con Flutter, Android y PostgreSQL/Supabase que no existen en el entorno de edición. El código es candidato de QA, no una versión certificada para producción. Mantén el canje monetario de puntos desactivado (`redemptionUsdPerPoint = 0`) hasta cerrar las pruebas y el reverso de los puntos usados como tender en devoluciones.
 
 ## Cambios incluidos aquí
@@ -116,7 +131,7 @@ Leer AUDITORIA_CIERRE_2026-10-09.md. Aplicar hasta migración 0095. 0094 corrige
 Campañas financieras transaccionales, proveedor push, prueba de cámara del lector QR en dispositivo real, ciclo completo de premios, cobertura Flutter de tienda/crédito/servicios/gastos y retorno SwiftUI. Integraciones reales de terminales y fiscalidad requieren proveedor y credenciales. No habilitar comercialmente beneficios hasta completar estos flujos y la validación financiera.
 
 
-## Estado de esta ejecución — 9 octubre 2026
+## Estado histórico de una ejecución anterior — 9 octubre 2026
 
 La evidencia vigente está consolidada en `QA_CIERRE_MAQUINA_2026-10-09.md`: 208 unitarias, 89 contratos de servidor, 14 web, 5 contratos Flutter en Node, 4 pruebas Dart en Operaciones y 1 en Clientes; TypeScript, build, ESLint, análisis Flutter y `node --check` pasan. Las migraciones 0001–0104 y 41 scripts SQL smoke pasan en PostgreSQL 18.6 efímero y limpio. Se compilaron ambos APK debug para el API de emulador local. No se hizo inspección visual de navegador ni instalación en dispositivo.
 

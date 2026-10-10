@@ -1,16 +1,31 @@
 # DLC Gasolineras — entrega para QA humano
 
+## Estado vigente de esta actualización documental
+
+**Fecha de evidencia:** 9 de octubre de 2026. Esta sección prevalece sobre recuentos y resultados posteriores conservados como historial. La evidencia es **local** y no acredita aceptación, despliegue, producción ni E2E de negocio.
+
+- Checkout dedicado autorizado en `main`; commits locales `55d1e99` (harness unitario tolerante a CRLF) y `a413d21` (limpieza de logging de sesión Flutter). No hubo push ni despliegue.
+- Entorno: Windows 10 x64; Node `v24.19.0`, pnpm `11.25.0`, Flutter `3.47.5` stable y Dart `3.13.4`; no hay dispositivos ADB conectados.
+- `pnpm run test:unit`: salida 0, **222 pass, 0 fail, 0 skipped**. `test:integration` tiene 3 pruebas **SKIP** porque `DLC_API_BASE_URL` no está definido; no contactó endpoint alguno.
+- Como comprobaciones locales previas en Node 24: build, typecheck, lint; contratos 93/93, web 15/15, contrato Flutter 1/1 y verificadores estructurales de reporte/aceptación/release. No son recorridos E2E de negocio ni walkthrough de navegador.
+- Flutter actual: `flutter analyze --no-pub` pasa en `dlc_api`, `dlc_customers` y `dlc_operations`; pruebas Dart actuales: Clientes 1/1 y Operaciones 4/4. `dlc_api` no tiene directorio `test/`. La limpieza eliminó una comparación nula inalcanzable en `employee_session.dart:2241`; no cambió comportamiento fuente.
+- APK de Operaciones reconstruido con `flutter build apk --debug --dart-define=DLC_API_BASE_URL=http://10.0.2.2:4000/api/v1`: salida 0, 179,113,952 bytes, SHA-256 `123C1F5D0F018866107EA359B094CDA5148ED8968E4A197B1DD93B6A00D49BD0`; canónico y alias son idénticos. No se instaló. El APK de Clientes no se reconstruyó: falta URL y publishable key de Supabase QA; el archivo existente permanece sin cambios, SHA-256 `bfe141f3190b7caeafbc68d8030cdd30f4695ec582f6d1f1cf84374362049e64`.
+- Paquete fuente QA regenerado y verificado: 692 entradas, 108 migraciones locales hasta 0108 y SHA-256 02c5a2d1ec61a7c6f4ee9cf622de221ee95804d234695330ca0255f6587eb3f4. El dato describe el paquete local; no acredita migraciones remotas de Supabase.
+- El catálogo fuente local tiene 108 migraciones hasta 0108. Esta sesión no abrió conexión a Supabase, no ejecutó SQL, seeds, API, concurrencia, autenticación/persistencia de sesión ni flujos remotos. Tampoco hubo navegador autenticado.
+- RDD está activo por defecto, pero no hay revisión ni recibo/PASS: la evaluación del rango comprometido es de riesgo alto y STATUS solicita `external.select_intended_untracked` para cuatro caches/locks Flutter sin seguimiento; esa captura no está disponible en este runtime. Las seis modificaciones Windows de plugin (solo final de línea) y esos cuatro archivos sin seguimiento no se deben stagear/restaurar.
+- Bloqueadores: destino QA aislado identificado con `DLC_API_BASE_URL`, login/tenant de prueba, URL y publishable key de Supabase QA, navegador autenticado y dispositivo Android. Mailjet, sandbox de tarjeta, DTE, push y Mac/iOS/Keychain siguen sin evidencia, credenciales ni aprobación aplicable; la contraseña antigua expuesta de Mailjet no debe reutilizarse.
+
 ## Continuación de trabajo en Work (prioridad)
 
 Sigue HANDOFF_TRABAJO_PENDIENTE_WORK.md para el backlog completo, criterios de aceptación y entregables. Las notas históricas de pruebas Flutter son contradictorias: reejecuta y registra la evidencia actual.
 
-## Estado actual verificado
+## Estado anterior verificado (histórico; sustituido por la evidencia vigente)
 
 Este bloque reemplaza los estados antiguos de Supabase y los recuentos previos que permanecen abajo como historial.
 
 Este bloque reemplaza estados antiguos de Supabase y recuentos previos que permanecen abajo como historial. La copia de trabajo incorpora ambas versiones originales y los cambios descritos aquí. El proyecto Supabase DLC (PostgreSQL 17.11) recibió las migraciones 0086–0108; el ledger de la API contiene 108 versiones; las 23 migraciones nuevas aparecen también en el historial de Supabase y sus SHA-256 coinciden. La base sigue vacía de organizaciones/sucursales. El smoke SQL remoto pasó con rollback y sin datos persistentes. Esta entrega está preparada para QA humano; **no está certificada para producción ni significa que todos los recorridos estén aceptados**.
 
-## Evidencia actual de verificación
+## Evidencia anterior de verificación (histórica; no usar como estado actual)
 
 - Servidor: build TypeScript y ESLint PASS; 222 pruebas unitarias y 93 contratos PASS.
 - Web: 15/15 pruebas PASS. Contrato Flutter/API en Node: 1/1 PASS.
@@ -29,7 +44,7 @@ Este bloque reemplaza estados antiguos de Supabase y recuentos previos que perma
 - Descargas con el mismo combustible del tanque ya no se registran como contaminación. La vista de descargas muestra aprobadores y evidencia y no permite verificar el retiro antes de aprobar las pérdidas.
 - El ZIP fuente excluye la caché Windows generada dentro del árbol Flutter; `SHA256SUMS.txt` identifica el paquete y los APK canónicos.
 
-## Evidencia local
+## Evidencia local histórica (sustituida cuando contradiga la evidencia vigente)
 
 - Servidor: TypeScript, build y ESLint pasan; 212 unitarias + 89 contratos PASS. 3/3 pruebas HTTP básicas (health/readiness/401) pasan contra API local y PostgreSQL temporal con login runtime restringido; no prueban flujos de negocio autenticados.
 - Web: 14/14 pruebas y chequeo de sintaxis pasan. No hubo recorrido visual autenticado en navegador.
@@ -37,11 +52,11 @@ Este bloque reemplaza estados antiguos de Supabase y recuentos previos que perma
 - Android: ambos APK debug compilan; el APK de Operaciones incluye el permiso de cámara. PostgreSQL 18.6 temporal aplicó 104 migraciones y pasó 42/42 smokes SQL en base vacía.
 - No se instalaron APK ni se probaron en dispositivo/emulador; no se pudo validar lectura QR física. No se probaron rutas de negocio autenticadas con datos QA.
 
-## APK debug
+## APK debug histórico (la evidencia vigente de arriba tiene precedencia)
 
 Ambos APK apuntan a `http://10.0.2.2:4000/api/v1` para emulador Android. Clientes necesita recompilarse con un proyecto Supabase de QA y su publishable key; no se incluyeron credenciales.
 
-- Operaciones SHA-256: `9d1e06622d026f262bf6f73d2736b6ba9d43deab1fc38e7866458039f592aec0`
+- Operaciones SHA-256 histórico de un build anterior: 9d1e06622d026f262bf6f73d2736b6ba9d43deab1fc38e7866458039f592aec0; el hash actual verificado es 123c1f5d0f018866107ea359b094cda5148ed8968e4a197b1dd93b6a00d49bd0.
 - Clientes SHA-256: bfe141f3190b7caeafbc68d8030cdd30f4695ec582f6d1f1cf84374362049e64
 
 ## Aún pendiente

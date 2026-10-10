@@ -1,5 +1,19 @@
 # Auditoría de concurrencia, sesiones y correo de invitación — 2026-10-09
 
+## Estado vigente de esta actualización documental
+
+**Fecha de evidencia:** 9 de octubre de 2026. Esta sección prevalece sobre recuentos y resultados posteriores conservados como historial. La evidencia es **local** y no acredita aceptación, despliegue, producción ni E2E de negocio.
+
+- Checkout dedicado autorizado en `main`; commits locales `55d1e99` (harness unitario tolerante a CRLF) y `a413d21` (limpieza de logging de sesión Flutter). No hubo push ni despliegue.
+- Entorno: Windows 10 x64; Node `v24.19.0`, pnpm `11.25.0`, Flutter `3.47.5` stable y Dart `3.13.4`; no hay dispositivos ADB conectados.
+- `pnpm run test:unit`: salida 0, **222 pass, 0 fail, 0 skipped**. `test:integration` tiene 3 pruebas **SKIP** porque `DLC_API_BASE_URL` no está definido; no contactó endpoint alguno.
+- Como comprobaciones locales previas en Node 24: build, typecheck, lint; contratos 93/93, web 15/15, contrato Flutter 1/1 y verificadores estructurales de reporte/aceptación/release. No son recorridos E2E de negocio ni walkthrough de navegador.
+- Flutter actual: `flutter analyze --no-pub` pasa en `dlc_api`, `dlc_customers` y `dlc_operations`; pruebas Dart actuales: Clientes 1/1 y Operaciones 4/4. `dlc_api` no tiene directorio `test/`. La limpieza eliminó una comparación nula inalcanzable en `employee_session.dart:2241`; no cambió comportamiento fuente.
+- APK de Operaciones reconstruido con `flutter build apk --debug --dart-define=DLC_API_BASE_URL=http://10.0.2.2:4000/api/v1`: salida 0, 179,113,952 bytes, SHA-256 `123C1F5D0F018866107EA359B094CDA5148ED8968E4A197B1DD93B6A00D49BD0`; canónico y alias son idénticos. No se instaló. El APK de Clientes no se reconstruyó: falta URL y publishable key de Supabase QA; el archivo existente permanece sin cambios, SHA-256 `bfe141f3190b7caeafbc68d8030cdd30f4695ec582f6d1f1cf84374362049e64`.
+- El catálogo fuente local tiene 108 migraciones hasta 0108. Esta sesión no abrió conexión a Supabase, no ejecutó SQL, seeds, API, concurrencia, autenticación/persistencia de sesión ni flujos remotos. Tampoco hubo navegador autenticado.
+- RDD está activo por defecto, pero no hay revisión ni recibo/PASS: la evaluación del rango comprometido es de riesgo alto y STATUS solicita `external.select_intended_untracked` para cuatro caches/locks Flutter sin seguimiento; esa captura no está disponible en este runtime. Las seis modificaciones Windows de plugin (solo final de línea) y esos cuatro archivos sin seguimiento no se deben stagear/restaurar.
+- Bloqueadores: destino QA aislado identificado con `DLC_API_BASE_URL`, login/tenant de prueba, URL y publishable key de Supabase QA, navegador autenticado y dispositivo Android. Mailjet, sandbox de tarjeta, DTE, push y Mac/iOS/Keychain siguen sin evidencia, credenciales ni aprobación aplicable; la contraseña antigua expuesta de Mailjet no debe reutilizarse.
+
 ## Trabajo aplicado
 
 - Las cuentas vinculadas a una ficha de empleado ahora solo pueden iniciar sesión si su empleado está activo y existe un turno programado vigente para su sucursal, según el reloj de PostgreSQL.
@@ -7,6 +21,7 @@
 - Las cuentas sin employee_id (por ejemplo, cuentas administrativas de organización no asociadas a una ficha de empleado) conservan la política de sesión existente.
 - Se añadieron pruebas que verifican que login fuera de turno no crea sesión y que un token de empleado sin turno vigente no autentica.
 
+> **Límite de evidencia vigente:** la sesión actual solo comprobó analizadores y pruebas locales. No conectó API/Supabase, no ejecutó login, refresh, persistencia de sesión ni concurrencia de dos clientes. Las descripciones de abajo son revisión de código e historial; no son prueba de runtime. Mailjet sigue bloqueado: no hay API key/secret, remitente/DNS verificados ni envío, y la contraseña antigua expuesta no debe reutilizarse.
 ## Concurrencia observada
 
 El servidor ya usa transacciones, bloqueos de fila, índices/constraints, claves de idempotencia y versiones optimistas en varios flujos críticos. Ejemplos comprobados: fichas de personal, alta de sucursal, turnos sin solapamiento, compras, cortes, precios, incidencias, activos y despachos. Cuando un formulario lleva una versión vieja, ciertos endpoints devuelven conflicto para que se recargue el registro.

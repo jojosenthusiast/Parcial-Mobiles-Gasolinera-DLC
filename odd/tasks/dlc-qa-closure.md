@@ -10,7 +10,7 @@ The closure handoff contains contradictory historical test status and lists unve
 
 ## Scope and constraints
 
-- Repository: `C:\Users\frenzied\Desktop\New folder (5)`; branch `main`; user explicitly authorized commits and push to this repository, but no deployment.
+- Repository: `C:\Users\frenzied\Desktop\New folder (5)`; branch `main`; user authorized this repository. Two local commits exist; there has been no push or deployment.
 - Preserve unrelated/generated worktree state. Do not reset, restore, or clean generated Windows Flutter plugin files or package caches.
 - Use only a verified isolated QA Supabase/API target; never query or mutate production. Do not assume local PostgreSQL or Docker is required.
 - Never upload secrets. Do not reuse the previously exposed Mailjet password. Missing Mailjet API credentials/sender/DNS, payment sandbox, DTE, push credentials/approval, Mac/iOS Keychain, or test devices remain explicit blockers/simulations.
@@ -30,11 +30,11 @@ The closure handoff contains contradictory historical test status and lists unve
 
 - [x] DLC-01 Record current checkout and isolated-QA readiness; preserve generated worktree files.
 - [x] DLC-02 Diagnose the duplicate declaration preventing Node unit test modules from compiling; make the inline import-stripping regexes CRLF-tolerant. Root cause confirmed: LF-only patterns silently failed against CRLF source and left duplicate imports in generated modules. Work-unit commit: `55d1e99` (`test: handle CRLF imports in service harness`).
-- [x] DLC-03 Fix the shared Flutter API analyzer issue. Removed an unreachable null-check branch in the request log interpolation; no package `test/` directory exists and no behavior change warranted a new test.
-- [ ] DLC-04 Run available local test suites and review web/mobile/API paths within actual environment capabilities.
+- [x] DLC-03 Fix the shared Flutter API analyzer issue. Removed an unreachable null-check branch in `employee_session.dart:2241`; no package `test/` directory exists and no behavior change warranted a new test. Work-unit commit: `a413d21` (`Flutter session logging cleanup`).
+- [x] DLC-04 Run available local test suites and record bounded evidence. Root `pnpm run test:unit` exit 0: 222 pass, 0 fail/skipped; `test:integration`: 3 SKIP with no `DLC_API_BASE_URL`, no endpoint contacted. Previous local Node-24 checks: build/typecheck/lint; contracts 93/93, web 15/15, Flutter contract 1/1 and structural verifiers. Flutter current: analyze passes in all three packages; Customers 1/1 and Operations 4/4 Dart tests. These are local checks, not business E2E.
 - [ ] DLC-05 Verify whether a non-production QA API/Supabase target and test accounts are available; execute safe integration journeys or document blockers.
-- [ ] DLC-06 Rebuild APKs, calculate hashes, and validate source ZIP exclusions only after implementation checks pass.
-- [ ] DLC-07 Update QA handoffs, closure audit, matrix, and evidence; reconcile historical test contradictions.
+- [x] DLC-06 Regenerate and verify the QA source ZIP and artifact sums after implementation checks. Operaciones was rebuilt; Clientes intentionally remains unchanged because QA Supabase values are unavailable. ZIP verified: 692 entries and 108 local migrations through 0108; its source ZIP checksum is recorded only in the excluded artifacts manifest and SHA256SUMS sidecar. Operations canonical/alias SHA-256: 123c1f5d0f018866107ea359b094cda5148ed8968e4a197b1dd93b6a00d49bd0; Customers canonical/alias SHA-256: bfe141f3190b7caeafbc68d8030cdd30f4695ec582f6d1f1cf84374362049e64. No APK was installed.
+- [x] DLC-07 Update the assigned QA handoffs, audit, checklist, Supabase/session/UI notes, and task evidence. Current local evidence is placed before historical contradictions; the rebuilt package evidence is recorded in the excluded artifacts manifest and SHA256SUMS sidecar without duplicating the source ZIP checksum here.
 - [ ] DLC-08 Perform final verification, inspect exact diff, commit and push verified changes to `main`, with no deployment.
 
 ## Progress and evidence
@@ -51,7 +51,7 @@ The closure handoff contains contradictory historical test status and lists unve
 - Flutter analyzer fix: `employee_session.dart:2241` used a redundant nullable comparison although the correlation ID expression falls back to non-null `requestId`. `flutter analyze --no-pub` passed for `dlc_api`, `dlc_customers`, and `dlc_operations` after the one-line cleanup.
 - Fresh Flutter test verification after that fix: customers app passed 1/1; operations app passed 4/4. Flutter 3.47.5 / Dart 3.13.4, Windows 10 x64. These are Flutter tests; the separate analyzer results are not counted as tests.
 - RDD boundary: mode is on by default. Assessment for commit `55d1e99` reported high risk/unassessable because four untracked package cache/lock artifacts lacked an explicit selection. Selectorless status returned `collect intended_untracked_selection`; this runtime exposes no `external.select_intended_untracked` capture tool. No review candidate was submitted and no PASS/receipt is claimed. Reassess committed-only after explicitly excluding generated package artifacts if the CLI supports the exact offered selection.
-- Current progress: DLC-01–DLC-03 complete. The CRLF test-harness change is committed locally as `55d1e99`. No external services, APKs, closure documents, push, or deployment changed yet. Original generated Flutter files and package caches remain untouched.
+- Current progress: DLC-01–DLC-03 complete. The CRLF harness and Flutter logging cleanup are committed locally as `55d1e99` and `a413d21`. The Operaciones APK was rebuilt locally; closure documents were updated, but no source ZIP was regenerated, no external service changed, and there was no push or deployment. Original generated Flutter files and package caches remain untouched.
 
 ## Next step
 
@@ -63,3 +63,11 @@ Inspect the source-package release and artifact workflow, then map which remaini
 - `server/test/contamination-service.test.mjs` and adjacent harness helpers — failing unit-test setup to diagnose.
 - `flutter/packages/dlc_api/lib/src/employee_session.dart` — shared package analyzer failure.
 - `HANDOFF_QA_MAQUINA.md`, `docs/HANDOFF_QA_MAQUINA.md`, `docs/AUDITORIA_CIERRE_2026-10-09.md` — closure evidence artifacts to update after verification.
+
+## Current closure evidence — 2026-10-09
+
+- Operaciones APK rebuild: `flutter build apk --debug --dart-define=DLC_API_BASE_URL=http://10.0.2.2:4000/api/v1`, exit 0; Flutter 3.47.5; 179,113,952 bytes; SHA-256 `123C1F5D0F018866107EA359B094CDA5148ED8968E4A197B1DD93B6A00D49BD0`; canonical and alias are byte-identical. It was not installed because no ADB device exists.
+- Clientes APK remains unchanged because a verified QA Supabase URL and publishable key are unavailable; its canonical file and alias SHA-256 are bfe141f3190b7caeafbc68d8030cdd30f4695ec582f6d1f1cf84374362049e64.
+- Local migration catalog: 108 files through 0108. No Supabase/API/SQL/remote migration verification, seed, auth/session-persistence, shift-limit, concurrency, or business flow was run in this session.
+- RDD mode is on by default. The committed-range assessment is high risk because of `server/test/payments-service.test.mjs`; selectorless status requests `external.select_intended_untracked` for four untracked Flutter caches/locks. This runtime cannot capture it, so no review submission, receipt, or PASS exists.
+- Next action: obtain the exact isolated QA destination, runtime access and test identities; then run a scoped non-production integration plan. Rebuild Clientes only after its QA Supabase values are available. Regenerate and inspect the source ZIP separately before documenting a new ZIP count/hash.

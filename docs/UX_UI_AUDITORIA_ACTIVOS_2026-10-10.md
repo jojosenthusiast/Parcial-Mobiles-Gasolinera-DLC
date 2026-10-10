@@ -1,5 +1,19 @@
 # Revisión UI/UX y activos operativos — 2026-10-10
 
+## Estado vigente de esta actualización documental
+
+**Fecha de evidencia:** 9 de octubre de 2026. Esta sección prevalece sobre recuentos y resultados posteriores conservados como historial. La evidencia es **local** y no acredita aceptación, despliegue, producción ni E2E de negocio.
+
+- Checkout dedicado autorizado en `main`; commits locales `55d1e99` (harness unitario tolerante a CRLF) y `a413d21` (limpieza de logging de sesión Flutter). No hubo push ni despliegue.
+- Entorno: Windows 10 x64; Node `v24.19.0`, pnpm `11.25.0`, Flutter `3.47.5` stable y Dart `3.13.4`; no hay dispositivos ADB conectados.
+- `pnpm run test:unit`: salida 0, **222 pass, 0 fail, 0 skipped**. `test:integration` tiene 3 pruebas **SKIP** porque `DLC_API_BASE_URL` no está definido; no contactó endpoint alguno.
+- Como comprobaciones locales previas en Node 24: build, typecheck, lint; contratos 93/93, web 15/15, contrato Flutter 1/1 y verificadores estructurales de reporte/aceptación/release. No son recorridos E2E de negocio ni walkthrough de navegador.
+- Flutter actual: `flutter analyze --no-pub` pasa en `dlc_api`, `dlc_customers` y `dlc_operations`; pruebas Dart actuales: Clientes 1/1 y Operaciones 4/4. `dlc_api` no tiene directorio `test/`. La limpieza eliminó una comparación nula inalcanzable en `employee_session.dart:2241`; no cambió comportamiento fuente.
+- APK de Operaciones reconstruido con `flutter build apk --debug --dart-define=DLC_API_BASE_URL=http://10.0.2.2:4000/api/v1`: salida 0, 179,113,952 bytes, SHA-256 `123C1F5D0F018866107EA359B094CDA5148ED8968E4A197B1DD93B6A00D49BD0`; canónico y alias son idénticos. No se instaló. El APK de Clientes no se reconstruyó: falta URL y publishable key de Supabase QA; el archivo existente permanece sin cambios, SHA-256 `bfe141f3190b7caeafbc68d8030cdd30f4695ec582f6d1f1cf84374362049e64`.
+- El catálogo fuente local tiene 108 migraciones hasta 0108. Esta sesión no abrió conexión a Supabase, no ejecutó SQL, seeds, API, concurrencia, autenticación/persistencia de sesión ni flujos remotos. Tampoco hubo navegador autenticado.
+- RDD está activo por defecto, pero no hay revisión ni recibo/PASS: la evaluación del rango comprometido es de riesgo alto y STATUS solicita `external.select_intended_untracked` para cuatro caches/locks Flutter sin seguimiento; esa captura no está disponible en este runtime. Las seis modificaciones Windows de plugin (solo final de línea) y esos cuatro archivos sin seguimiento no se deben stagear/restaurar.
+- Bloqueadores: destino QA aislado identificado con `DLC_API_BASE_URL`, login/tenant de prueba, URL y publishable key de Supabase QA, navegador autenticado y dispositivo Android. Mailjet, sandbox de tarjeta, DTE, push y Mac/iOS/Keychain siguen sin evidencia, credenciales ni aprobación aplicable; la contraseña antigua expuesta de Mailjet no debe reutilizarse.
+
 ## Resultado
 
 Se completó la primera versión funcional de Activos operativos para registrar y controlar terminales POS, medidores, mangueras, herramientas y equipo de seguridad. El inventario queda separado del combustible por tanque y de la mercadería POS por lote. Aceites, refrigerantes y otros productos de venta rápida siguen en Inventario/Tienda.
@@ -30,7 +44,7 @@ La pantalla resume unidades por estado e incidencias abiertas y grafica cambios 
 3. Falta de vínculo práctico a incidencias. La ficha ahora ofrece registrar daño o pérdida; la pérdida cambia el estado a missing en la misma transacción de la incidencia.
 4. Representación estadística incompleta. Se agregó resumen por estado, incidencia pendiente y actividad por mes tanto al tablero web como a Operaciones; Activos quedó disponible como reporte también en móvil.
 
-## Evidencia de esta revisión
+## Evidencia de esta revisión (histórica; la evidencia vigente de arriba tiene precedencia)
 
 - Servidor: build TypeScript, ESLint, 222 pruebas unitarias y 93 pruebas de contrato.
 - Web: sintaxis JavaScript y 15 pruebas web.
@@ -39,7 +53,7 @@ La pantalla resume unidades por estado e incidencias abiertas y grafica cambios 
 
 ## Límites comprobados
 
-- PostgreSQL no responde en localhost:5432 (pg_isready); Docker no está instalado. Por eso la migración 0105_operational_assets.sql y sus triggers aún no se han aplicado ni probado contra un servidor PostgreSQL real. La verificación de release reconoce 105 migraciones y conserva secuencia.
+- PostgreSQL no responde en localhost:5432 (pg_isready); Docker no está instalado. Por eso la migración 0105_operational_assets.sql y sus triggers aún no se han aplicado ni probado contra un servidor PostgreSQL real. El catálogo fuente vigente contiene 108 migraciones; no se generó ni verificó un ZIP nuevo en esta actualización.
 - flutter test no llegó a iniciar: el lanzador Flutter de esta sesión informa que falta PROGRAMFILES(X86). El APK sí compila y el análisis estático pasa. No instalé ni probé en teléfonos/emuladores.
 - No hubo recorrido web autenticado en navegador en esta sesión. El módulo se verificó por pruebas, contratos y análisis estático.
 - La app de Clientes se revisó a nivel de alcance: el inventario operativo pertenece a empleados/gerencia y no debe aparecer en la experiencia de lealtad del cliente.
@@ -47,4 +61,4 @@ La pantalla resume unidades por estado e incidencias abiertas y grafica cambios 
 
 ## Validación real de base
 
-Las migraciones 0105–0108 ya se ejecutaron en Supabase PostgreSQL 17.11. El smoke SQL transaccional confirmó asignación, historial inmutable, incidencia de daño y estado de reparación; un caso inválido fue rechazado. Se hizo ROLLBACK y no quedaron datos de prueba. Los advisors quedaron con cero hallazgos de seguridad; se cubrieron las 68 FK nuevas con 67 índices y los avisos globales de FK volvieron a la base previa de 331. El historial de eventos ahora carece de permisos UPDATE/DELETE para el rol runtime.
+La afirmación de que 0105–0108 se ejecutaron en Supabase PostgreSQL 17.11 es histórica y no fue revalidada por esta sesión; no debe usarse como prueba de migración remota. El smoke SQL transaccional confirmó asignación, historial inmutable, incidencia de daño y estado de reparación; un caso inválido fue rechazado. Se hizo ROLLBACK y no quedaron datos de prueba. Los advisors quedaron con cero hallazgos de seguridad; se cubrieron las 68 FK nuevas con 67 índices y los avisos globales de FK volvieron a la base previa de 331. El historial de eventos ahora carece de permisos UPDATE/DELETE para el rol runtime.

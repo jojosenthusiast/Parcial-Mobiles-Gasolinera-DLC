@@ -2,7 +2,7 @@
 
 El proyecto DLC de la organización sole usa PostgreSQL administrado por Supabase. Referencia de proyecto: tgfnoxqwlasydphhlqmp. El panel y las apps consumen la API NestJS; no deben incluir credenciales PostgreSQL ni claves secretas de Supabase.
 
-## Estado actual verificado
+## Estado remoto histórico (no verificado por esta sesión)
 
 - Proyecto ACTIVE_HEALTHY, PostgreSQL 17.11, región us-east-1.
 - El esquema público contiene 108 migraciones de aplicación, hasta 0108_operational_asset_events_append_only_privileges.sql. El ledger de la aplicación tiene 108 entradas; el historial interno de Supabase contiene 97, porque la base usa una línea base consolidada. Las 23 migraciones locales nuevas (0086–0108) están presentes en ambos historiales y sus SHA-256 coinciden: 23/23.
@@ -11,7 +11,14 @@ El proyecto DLC de la organización sole usa PostgreSQL administrado por Supabas
 - Las dos tablas de activos tienen RLS. anon, authenticated y service_role no tienen SELECT sobre ellas. dlc_api_runtime conserva las operaciones requeridas; el historial permite SELECT/INSERT, sin UPDATE/DELETE.
 - El advisor de seguridad informa 0 hallazgos después de 0106. El smoke SQL remoto validó alta/asignación de equipo, historial inmutable, reporte de daño y transición a reparación; también rechazó un reporte inválido. Se ejecutó en transacción con ROLLBACK. No quedaron datos de prueba.
 
-## Rendimiento y pendientes de plataforma
+## Estado local vigente
+
+El catálogo fuente local contiene **108 migraciones**, hasta `0108_operational_asset_events_append_only_privileges.sql`. Este conteo describe archivos locales; no demuestra que `0108` ni ninguna migración se haya aplicado en un proyecto Supabase conectado.
+
+En esta sesión no se usó URL, publishable key, credencial, conector ni servicio remoto de Supabase. No se inspeccionó `schema_migrations`, no se ejecutó SQL/smoke/seed, no se verificaron RLS, grants, advisors, índices ni estado del proyecto. Las afirmaciones remotas de la sección histórica siguiente requieren revalidación contra un entorno QA aislado antes de usarse como evidencia.
+
+El siguiente paso seguro es recibir el destino QA exacto y autorización de acceso, conservar backup/plan de rollback y entonces ejecutar solo migraciones y pruebas previamente acordadas; no tocar producción.
+## Rendimiento y pendientes de plataforma (histórico, sin revalidación remota actual)
 
 El advisor de rendimiento mantiene 331 avisos INFO de FK sin índice en tablas históricas. La nueva cadena no aumenta ese total: los 68 avisos de las FK nuevas se cubrieron con 67 índices. Hay 120 índices observados como no usados; la base está vacía y no tiene carga de negocio, así que esos avisos no justifican borrarlos. Hace falta medir con datos representativos antes de optimizar más.
 
@@ -26,7 +33,7 @@ ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public
 
 El rol dlc_api_runtime es NOLOGIN y no administrativo. Aún falta configurar un usuario login de servicio, miembro de ese rol, en el entorno servidor de la API. El proyecto local no contiene un .env real; por eso esta sesión aplicó migraciones y smoke SQL vía el conector de Supabase, pero no ejecutó rutas autenticadas de la API contra esa base. En producción, usa DATABASE_SSL_MODE=verify-full y almacena credenciales en el gestor de secretos del despliegue.
 
-## Alcance de QA
+## Alcance de QA (histórico, sin revalidación remota actual)
 
 La conexión a la base real permitió aplicar y validar las migraciones directamente en Supabase; PostgreSQL local y Docker no son requisitos para esa comprobación. Compose sigue siendo solo una opción para reproducir una base local. La prueba SQL remota no reemplaza los recorridos API autenticados, pruebas entre organizaciones/sucursales, concurrencia con dos clientes ni aceptación visual en navegador y dispositivos.
 
