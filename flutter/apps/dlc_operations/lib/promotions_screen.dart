@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'app_theme.dart';
 import 'dart:typed_data';
 
 import 'package:dlc_api/dlc_api.dart';
@@ -84,7 +85,7 @@ class _PromotionsScreenState extends State<PromotionsScreen> {
       const Text('Beneficios y anuncios', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
       const Padding(padding: EdgeInsets.only(top: 6, bottom: 12), child: Text('Los borradores no se muestran a Clientes. Las reglas económicas requieren aprobación de otra persona.')),
       if (widget.permissions.contains('promotion.network.manage')) Align(alignment: Alignment.centerRight, child: OutlinedButton.icon(onPressed: busy ? null : _addCashbackBank, icon: const Icon(Icons.account_balance_outlined), label: const Text('Configurar bancos cashback'))),
-      if (error != null) Card(color: const Color(0xffffe9e4), child: ListTile(leading: const Icon(Icons.error_outline), title: Text(error!))),
+      if (error != null) Card(color: context.dlc.criticalContainer, child: ListTile(leading: const Icon(Icons.error_outline), title: Text(error!))),
       if (rows.isEmpty) const Card(child: ListTile(leading: Icon(Icons.campaign_outlined), title: Text('Aún no hay promociones en este ámbito.'))),
       ...rows.map(_promotionTile),
       if (busy) const LinearProgressIndicator(),
@@ -114,11 +115,11 @@ class _PromotionsScreenState extends State<PromotionsScreen> {
       if (_str(definition['imageUrl']).isNotEmpty) Image.network(_str(definition['imageUrl']), height: 150, width: double.infinity, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const SizedBox(height: 70, child: Center(child: Icon(Icons.broken_image_outlined)))),
       Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [Expanded(child: Text(_str(definition['title']), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold))), Chip(label: Text('$status · v${item['currentVersion'] ?? 1}'))]),
-        Text(_headline(definition), style: const TextStyle(color: Color(0xffc64a20), fontWeight: FontWeight.w700)),
+        Text(_headline(definition), style: TextStyle(color: context.dlc.brand, fontWeight: FontWeight.w700)),
         const SizedBox(height: 4), Text(_str(definition['motive'])),
-        Text('${_str(definition['startsAt'])} – ${_str(definition['endsAt'])} · ${_str(definition['timeZone'])}', style: const TextStyle(fontSize: 12, color: Colors.black54)),
-        if(item['scope']=='network') Text('Audiencia: ${targetIds.isEmpty?'toda la red': '${targetIds.length} sucursales'}${zones.isEmpty?'':' · zonas ${zones.join(', ')}'}',style:const TextStyle(fontSize:12,color:Colors.black54)),
-        if(metric.isNotEmpty) Text('Criterio congelado: ${metric['metric']} ≥ ${metric['threshold']} · corte ${_str(metric['asOf'])} · $metricBranches sucursales cumplen',style:const TextStyle(fontSize:12,color:Colors.black54)),
+        Text('${_str(definition['startsAt'])} – ${_str(definition['endsAt'])} · ${_str(definition['timeZone'])}', style: TextStyle(fontSize: 12, color: context.dlc.muted)),
+        if(item['scope']=='network') Text('Audiencia: ${targetIds.isEmpty?'toda la red': '${targetIds.length} sucursales'}${zones.isEmpty?'':' · zonas ${zones.join(', ')}'}',style:TextStyle(fontSize:12,color:context.dlc.muted)),
+        if(metric.isNotEmpty) Text('Criterio congelado: ${metric['metric']} ≥ ${metric['threshold']} · corte ${_str(metric['asOf'])} · $metricBranches sucursales cumplen',style:TextStyle(fontSize:12,color:context.dlc.muted)),
         if(metricRows.isNotEmpty) ExpansionTile(title:const Text('Ver sucursales incluidas y medición'),tilePadding:EdgeInsets.zero,children:metricRows.map((row){final id=_str(row['branchId']);final branch=branchCatalog.where((b)=>b.id==id).firstOrNull;return ListTile(dense:true,title:Text(branch?.name??id),subtitle:Text('${branch?.zone??''} · ${_str(row['observedValue'])}'),);}).toList()),
         Text('Condiciones: ${_lines(_map(definition['terms'])['applies']).join(' · ')}', maxLines: 2, overflow: TextOverflow.ellipsis),
         if (actions.isNotEmpty) Wrap(alignment: WrapAlignment.end, spacing: 6, children: actions),
@@ -279,8 +280,8 @@ class _PromotionEditorPageState extends State<PromotionEditorPage> {
   }
 
   @override Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('Nueva promoción')), body: ListView(padding: const EdgeInsets.all(18), children: [
-    const Text('Prepara el borrador. Nada se publica hasta que otra persona revise y apruebe la regla. Los anuncios informativos pueden publicarse; los descuentos, cashback y multiplicadores siguen bloqueados hasta conectarse al cobro/POS y a la acreditación de puntos.', style: TextStyle(color: Colors.black54)),
-    if (error != null) Card(color: const Color(0xffffe9e4), child: ListTile(leading: const Icon(Icons.error_outline), title: Text(error!))),
+    Text('Prepara el borrador. Nada se publica hasta que otra persona revise y apruebe la regla. Los anuncios informativos pueden publicarse; los descuentos, cashback y multiplicadores siguen bloqueados hasta conectarse al cobro/POS y a la acreditación de puntos.', style: TextStyle(color: context.dlc.muted)),
+    if (error != null) Card(color: context.dlc.criticalContainer, child: ListTile(leading: const Icon(Icons.error_outline), title: Text(error!))),
     if (widget.allowNetwork && widget.allowBranch) DropdownButtonFormField<String>(initialValue: scope, decoration: const InputDecoration(labelText:'Alcance'), items: const [DropdownMenuItem(value:'branch',child:Text('Una sucursal')),DropdownMenuItem(value:'network',child:Text('Toda la red'))], onChanged:(v) { setState(() { scope=v??scope; imageUrl=null; imageUploadCommandId=null; pendingImageBytes=null; pendingImageMime=null; previewed=false; }); }),
     if(scope=='network') _audienceSelector(),
     if(scope=='network' && widget.branches.map((branch)=>branch.timezone).toSet().length>1) DropdownButtonFormField<String>(initialValue:campaignTimeZone,decoration:const InputDecoration(labelText:'Zona horaria para fechas y recurrencias'),items:widget.branches.map((branch)=>branch.timezone).toSet().map((zone)=>DropdownMenuItem(value:zone,child:Text(zone))).toList(),onChanged:(zone) { setState(() { selectedTimeZone=zone; previewed=false; }); }),
@@ -299,7 +300,7 @@ class _PromotionEditorPageState extends State<PromotionEditorPage> {
     if(recurrence=='weekly') Wrap(spacing:4,children:List.generate(7,(day){const labels=['Do','Lu','Ma','Mi','Ju','Vi','Sá'];return FilterChip(label:Text(labels[day]),selected:weekdays.contains(day),onSelected:(yes) { setState(() { if (yes) { weekdays.add(day); } else { weekdays.remove(day); } previewed=false; }); });})),
     if(recurrence=='monthly') DropdownButtonFormField<int>(initialValue:monthlyDay,decoration:const InputDecoration(labelText:'Día del mes (si no existe, se omite)'),items:List.generate(31,(i)=>DropdownMenuItem(value:i+1,child:Text('${i+1}'))),onChanged:(v) { setState(() { monthlyDay=v??monthlyDay; previewed=false; }); }),
     Row(children:[Expanded(child:OutlinedButton.icon(onPressed:busy?null:()=>_date(true),icon:const Icon(Icons.calendar_today),label:Text('Inicio ${_dateLabel(start)}'))),const SizedBox(width:8),Expanded(child:OutlinedButton.icon(onPressed:busy?null:()=>_date(false),icon:const Icon(Icons.event),label:Text('Fin ${_dateLabel(end)}')))]),
-    Text('Zona horaria de la audiencia: $campaignTimeZone',style:const TextStyle(color:Colors.black54)),
+    Text('Zona horaria de la audiencia: $campaignTimeZone',style:TextStyle(color:context.dlc.muted)),
     if(kind!='announcement') DropdownButtonFormField<String>(initialValue:stacking,decoration:const InputDecoration(labelText:'Combinación con puntos'),items:const [DropdownMenuItem(value:'none',child:Text('No combinar')),DropdownMenuItem(value:'with_points',child:Text('Permitir junto con puntos'))],onChanged:(v) { setState(() { stacking=v??stacking; previewed=false; }); }),
     const Padding(padding:EdgeInsets.only(top:14,bottom:4),child:Text('Imagen de promoción',style:TextStyle(fontWeight:FontWeight.w700))),
     OutlinedButton.icon(onPressed:busy||uploadingImage?null:_pickPromotionImage,icon:uploadingImage?const SizedBox(width:18,height:18,child:CircularProgressIndicator(strokeWidth:2)):const Icon(Icons.add_photo_alternate_outlined),label:Text(uploadingImage?'Cargando imagen…':pendingImageBytes!=null?'Reintentar carga':imageUrl==null?'Seleccionar imagen':'Cambiar imagen')),
@@ -307,7 +308,7 @@ class _PromotionEditorPageState extends State<PromotionEditorPage> {
     if(imageUrl!=null) ...[ClipRRect(borderRadius:BorderRadius.circular(12),child:Image.network(imageUrl!,height:150,width:double.infinity,fit:BoxFit.cover,errorBuilder:(_,__,___)=>const SizedBox(height:70,child:Center(child:Icon(Icons.broken_image_outlined))))),TextButton.icon(onPressed:busy||uploadingImage?null:() { setState(() { imageUrl=null; imageUploadCommandId=null; previewed=false; }); },icon:const Icon(Icons.delete_outline),label:const Text('Quitar imagen')),_field(imageAlt,'Texto alternativo de la imagen',max:240)],
     _field(applies,'Aplica cuando (una condición por línea)',max:6000,maxLines:4,onChanged:() { setState(() { termsAcknowledged=false; previewed=false; }); }),_field(excludes,'No aplica cuando (una condición por línea)',max:6000,maxLines:4,onChanged:() { setState(() { termsAcknowledged=false; previewed=false; }); }),
     CheckboxListTile(contentPadding:EdgeInsets.zero,value:termsAcknowledged,onChanged:busy?null:(value) { setState(() { termsAcknowledged=value??false; previewed=false; }); },title:const Text('Confirmo que las condiciones aplicables y exclusiones son completas y claras para el cliente.'),controlAffinity:ListTileControlAffinity.leading),
-    if(previewText!=null) Card(color:const Color(0xffeef4ec),child:Padding(padding:const EdgeInsets.all(12),child:Text(previewText!))),
+    if(previewText!=null) Card(color:context.dlc.optimalContainer,child:Padding(padding:const EdgeInsets.all(12),child:Text(previewText!))),
     OutlinedButton.icon(onPressed:busy?null:_preview,icon:const Icon(Icons.preview_outlined),label:const Text('Validar y previsualizar fechas')),
     FilledButton.icon(onPressed:busy?null:_save,icon:const Icon(Icons.save_outlined),label:Text(busy?'Guardando…':'Guardar borrador')),
   ]));

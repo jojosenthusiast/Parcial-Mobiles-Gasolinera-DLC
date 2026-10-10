@@ -1,20 +1,39 @@
 import 'package:dlc_api/dlc_api.dart';
+import 'app_theme.dart';
 import 'package:flutter/material.dart';
 import 'infrastructure_setup_screen.dart';
 import 'staff_shifts_screen.dart';
 import 'branch_prices_screen.dart';
+import 'country_catalog.dart';
+import 'haptics.dart';
+import 'branch_status.dart';
+import 'live_form.dart';
+import 'validators.dart';
 
 class BranchOnboardingScreen extends StatefulWidget {
   const BranchOnboardingScreen({
     required this.api,
     required this.onActivated,
+    this.initialBranchId,
     super.key,
   });
   final EmployeeSession api;
   final VoidCallback onActivated;
+
+  /// Opens the readiness wizard directly on this branch (e.g. from the
+  /// "branch is in preparation" state).
+  final String? initialBranchId;
   @override
   State<BranchOnboardingScreen> createState() => _BranchOnboardingScreenState();
 }
+
+const kAcademicLabProfile = 'academicLab22';
+const kAcademicLabDispenserCount = 6;
+
+/// The server rejects `academicLab22` with any dispenser count other than 6,
+/// so that profile always sends exactly six.
+int dispenserCountForProfile(String profile, int requested) =>
+    profile == kAcademicLabProfile ? kAcademicLabDispenserCount : requested;
 
 class _BranchOnboardingScreenState extends State<BranchOnboardingScreen> {
   final _code = TextEditingController(),
@@ -24,15 +43,18 @@ class _BranchOnboardingScreenState extends State<BranchOnboardingScreen> {
   BranchSummary? _selected;
   Map<String, dynamic> _detail = const {}, _readiness = const {};
   Set<String> _permissions = const {};
-  String _zone = 'central', _profile = 'academicLab22';
+  String _zone = 'central',
+      _profile = 'academicLab22',
+      _country = kDefaultCountryCode;
   int _expectedDispensers = 6;
+  final _dispensers = TextEditingController(text: '6');
   bool _loading = true, _saving = false;
   String? _error;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _load(branchId: widget.initialBranchId);
   }
 
   @override
@@ -40,6 +62,7 @@ class _BranchOnboardingScreenState extends State<BranchOnboardingScreen> {
     _code.dispose();
     _name.dispose();
     _timezone.dispose();
+    _dispensers.dispose();
     super.dispose();
   }
 
@@ -49,7 +72,18 @@ class _BranchOnboardingScreenState extends State<BranchOnboardingScreen> {
       _error = null;
     });
     try {
-      final drafts = await widget.api.branches(status: 'draft');
+      final drafts = [...await widget.api.branches(status: 'draft')];
+      if (branchId != null && !drafts.any((b) => b.id == branchId)) {
+        // A configured (not yet active) branch is not part of the draft list.
+        try {
+          final extra = BranchSummary.fromJson(
+            await widget.api.branchDetail(branchId),
+          );
+          if (extra.isInPreparation) drafts.add(extra);
+        } on DlcApiException {
+          // Fall back to the plain draft list.
+        }
+      }
       _drafts = drafts;
       if (branchId != null)
         _selected = drafts.where((b) => b.id == branchId).firstOrNull;
@@ -72,11 +106,27 @@ class _BranchOnboardingScreenState extends State<BranchOnboardingScreen> {
     }
   }
 
+  /// Live validation of the draft form; the primary button needs all null.
+  List<String?> get _draftErrors => [
+    branchCode(_code.text),
+    requiredText(_name.text, field: 'El nombre') ??
+        maxLengthText(_name.text, 120, field: 'El nombre'),
+    ianaTimezone(_timezone.text),
+    if (_profile == 'operational')
+      integerInRange(
+        _dispensers.text,
+        min: 1,
+        max: 200,
+        field: 'Los dispensadores',
+      ),
+  ];
+
+  bool get _draftValid => allValid(_draftErrors);
+
   Future<void> _create() async {
-    if (_code.text.trim().isEmpty ||
-        _name.text.trim().isEmpty ||
-        _timezone.text.trim().isEmpty) {
-      setState(() => _error = 'Completa código, nombre y zona horaria.');
+    if (!_draftValid) {
+      Haptics.error();
+      setState(() => _error = 'Corrige los campos marcados antes de crear.');
       return;
     }
     setState(() {
@@ -90,13 +140,44 @@ class _BranchOnboardingScreenState extends State<BranchOnboardingScreen> {
         zone: _zone,
         timezone: _timezone.text,
         profile: _profile,
-        expectedDispenserCount: _expectedDispensers,
+        expectedDispenserCount: dispenserCountForProfile(
+          _profile,
+          _expectedDispensers,
+        ),
+        countryCode: _country,
       );
+      Haptics.success();
       final id = result['id']?.toString();
       _code.clear();
       _name.clear();
       await _load(branchId: id);
     } on DlcApiException catch (e) {
+      Haptics.error();
+      if (mounted) setState(() => _error = e.message);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _changeCountry(String code) async {
+    final id = _selected?.id;
+    if (id == null || code == normalizeCountryCode(_detail['countryCode'])) return;
+    Haptics.selection();
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await widget.api.saveBranchStep(
+        id,
+        expectedVersion: _int(_readiness['onboardingVersion']),
+        step: 'identity',
+        data: {'countryCode': code},
+      );
+      Haptics.success();
+      await _load(branchId: id);
+    } on DlcApiException catch (e) {
+      Haptics.error();
       if (mounted) setState(() => _error = e.message);
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -231,7 +312,7 @@ class _BranchOnboardingScreenState extends State<BranchOnboardingScreen> {
               children: [
                 if (_error != null)
                   Card(
-                    color: const Color(0xffffeae5),
+                    color: context.dlc.criticalContainer,
                     child: ListTile(
                       leading: const Icon(Icons.error_outline),
                       title: Text(_error!),
@@ -243,17 +324,32 @@ class _BranchOnboardingScreenState extends State<BranchOnboardingScreen> {
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
                   const SizedBox(height: 8),
-                  TextField(
+                  LiveTextField(
                     controller: _code,
+                    label: 'Código',
+                    helper: 'Ej. SV-001 (letras, números, guion).',
+                    maxLength: 24,
                     textCapitalization: TextCapitalization.characters,
-                    decoration: const InputDecoration(labelText: 'Código'),
+                    validator: branchCode,
+                    onChanged: () => setState(() {}),
                   ),
                   const SizedBox(height: 8),
-                  TextField(
+                  LiveTextField(
                     controller: _name,
-                    decoration: const InputDecoration(
-                      labelText: 'Nombre de sucursal',
-                    ),
+                    label: 'Nombre de sucursal',
+                    maxLength: 120,
+                    validator: (v) =>
+                        requiredText(v, field: 'El nombre') ??
+                        maxLengthText(v, 120, field: 'El nombre'),
+                    onChanged: () => setState(() {}),
+                  ),
+                  const SizedBox(height: 8),
+                  CountryDropdown(
+                    value: _country,
+                    onChanged: (v) {
+                      Haptics.selection();
+                      setState(() => _country = v ?? _country);
+                    },
                   ),
                   const SizedBox(height: 8),
                   DropdownButtonFormField<String>(
@@ -277,11 +373,11 @@ class _BranchOnboardingScreenState extends State<BranchOnboardingScreen> {
                     onChanged: (v) => setState(() => _zone = v ?? _zone),
                   ),
                   const SizedBox(height: 8),
-                  TextField(
+                  LiveTextField(
                     controller: _timezone,
-                    decoration: const InputDecoration(
-                      labelText: 'Zona horaria (IANA)',
-                    ),
+                    label: 'Zona horaria (IANA)',
+                    validator: ianaTimezone,
+                    onChanged: () => setState(() {}),
                   ),
                   const SizedBox(height: 8),
                   DropdownButtonFormField<String>(
@@ -297,23 +393,39 @@ class _BranchOnboardingScreenState extends State<BranchOnboardingScreen> {
                         child: Text('Operativo'),
                       ),
                     ],
-                    onChanged: (v) => setState(() => _profile = v ?? _profile),
+                    onChanged: (v) => setState(() {
+                      _profile = v ?? _profile;
+                      if (_profile == kAcademicLabProfile) {
+                        _expectedDispensers = kAcademicLabDispenserCount;
+                      } else {
+                        _expectedDispensers =
+                            int.tryParse(_dispensers.text.trim()) ??
+                            _expectedDispensers;
+                      }
+                    }),
                   ),
                   if (_profile == 'operational') ...[
                     const SizedBox(height: 8),
-                    TextFormField(
-                      initialValue: '6',
+                    LiveTextField(
+                      controller: _dispensers,
+                      label: 'Dispensadores esperados',
+                      helper: 'Entre 1 y 200.',
                       keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'Dispensadores esperados',
+                      validator: (v) => integerInRange(
+                        v,
+                        min: 1,
+                        max: 200,
+                        field: 'Los dispensadores',
                       ),
-                      onChanged: (v) =>
-                          _expectedDispensers = int.tryParse(v) ?? 1,
+                      onChanged: () => setState(
+                        () => _expectedDispensers =
+                            int.tryParse(_dispensers.text.trim()) ?? 1,
+                      ),
                     ),
                   ],
                   const SizedBox(height: 12),
                   FilledButton.icon(
-                    onPressed: _saving ? null : _create,
+                    onPressed: _saving || !_draftValid ? null : _create,
                     icon: const Icon(Icons.add_business),
                     label: Text(_saving ? 'Creando…' : 'Crear y configurar'),
                   ),
@@ -334,7 +446,7 @@ class _BranchOnboardingScreenState extends State<BranchOnboardingScreen> {
                         leading: const Icon(Icons.store_outlined),
                         title: Text(b.name),
                         subtitle: Text(
-                          '${b.code} · versión ${b.onboardingVersion}',
+                          '${b.code} · ${countryName(b.countryCode)} · versión ${b.onboardingVersion}',
                         ),
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () => _load(branchId: b.id),
@@ -364,10 +476,21 @@ class _BranchOnboardingScreenState extends State<BranchOnboardingScreen> {
                         'Código ${_str(_detail['code'])} · ${_str(_detail['status']).isEmpty ? 'draft' : _str(_detail['status'])}',
                       ),
                       subtitle: Text(
-                        'Zona: ${_str(_detail['zone'])} · Horario: ${_str(_detail['timezone'] ?? _detail['timeZone'])}',
+                        'País: ${countryName(_detail['countryCode']?.toString())} · Zona: ${_str(_detail['zone'])} · Horario: ${_str(_detail['timezone'] ?? _detail['timeZone'])}',
                       ),
                     ),
                   ),
+                  if (_permissions.contains('branch.manage'))
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: CountryDropdown(
+                        value: normalizeCountryCode(_detail['countryCode']),
+                        enabled: !_saving,
+                        onChanged: (v) {
+                          if (v != null) _changeCountry(v);
+                        },
+                      ),
+                    ),
                   Card(
                     child: ListTile(
                       leading: const Icon(Icons.fact_check_outlined),
@@ -420,9 +543,9 @@ class _BranchOnboardingScreenState extends State<BranchOnboardingScreen> {
                     final row = mapOf(raw);
                     return Card(
                       child: ListTile(
-                        leading: const Icon(
+                        leading: Icon(
                           Icons.pending_actions,
-                          color: Colors.deepOrange,
+                          color: context.dlc.warning,
                         ),
                         title: Text(_str(row['message'])),
                         subtitle: Text(
@@ -441,11 +564,11 @@ class _BranchOnboardingScreenState extends State<BranchOnboardingScreen> {
                       label: Text(_saving ? 'Guardando…' : 'Activar sucursal'),
                     ),
                   if (_readiness['canActivate'] != true)
-                    const Padding(
+                    Padding(
                       padding: EdgeInsets.only(top: 8),
                       child: Text(
                         'La activación se habilita cuando el servidor valide todos los requisitos, incluidos precios efectivos y datos operativos.',
-                        style: TextStyle(color: Colors.black54),
+                        style: TextStyle(color: context.dlc.muted),
                       ),
                     ),
                 ],

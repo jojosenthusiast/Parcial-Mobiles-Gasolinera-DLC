@@ -89,7 +89,7 @@ private struct ManagerAssignmentCard: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 11) {
                 Image(systemName: "person.crop.circle.fill")
-                    .font(.title2).foregroundStyle(DLCTheme.forest)
+                    .font(.title2).foregroundStyle(DLCTheme.ink)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(manager.name).font(.headline)
                     Text("@\(manager.username)").font(.caption).foregroundStyle(DLCTheme.muted)
@@ -201,7 +201,7 @@ struct NewManagerView: View {
                 }
 
                 Label("El perfil solo opera la estación seleccionada.", systemImage: "lock.shield.fill")
-                    .font(.caption.weight(.medium)).foregroundStyle(DLCTheme.forest)
+                    .font(.caption.weight(.medium)).foregroundStyle(DLCTheme.ink)
                     .dlcCard(color: DLCTheme.greenBG)
 
                 if !errorMessage.isEmpty {

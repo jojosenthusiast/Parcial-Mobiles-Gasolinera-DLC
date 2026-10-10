@@ -1,4 +1,0 @@
-sales.controller.ts syntax PASS (decorators removed; not Nest typecheck)
-sales.dto.ts syntax PASS (decorators removed; not Nest typecheck)
-sales.module.ts syntax PASS (decorators removed; not Nest typecheck)
-sales.service.ts syntax PASS (decorators removed; not Nest typecheck)

@@ -6,6 +6,8 @@ import 'dart:typed_data';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
+import 'country.dart';
+
 const _baseUrl = String.fromEnvironment(
   'DLC_API_BASE_URL',
   defaultValue: 'http://10.0.2.2:4000/api/v1',
@@ -84,6 +86,7 @@ class BranchSummary {
     required this.timezone,
     this.status = 'active',
     this.onboardingVersion = 1,
+    this.countryCode = kDefaultCountryCode,
   });
 
   final String id;
@@ -93,6 +96,9 @@ class BranchSummary {
   final String timezone;
   final String status;
   final int onboardingVersion;
+
+  /// ISO 3166-1 alpha-2, uppercase. Missing in older responses => 'SV'.
+  final String countryCode;
 
   factory BranchSummary.fromJson(Map<String, dynamic> json) => BranchSummary(
     id: _string(json['id']),
@@ -104,6 +110,7 @@ class BranchSummary {
         ? 'active'
         : _string(json['status']),
     onboardingVersion: int.tryParse('${json['onboardingVersion'] ?? 1}') ?? 1,
+    countryCode: normalizeCountryCode(json['countryCode']),
   );
 }
 
@@ -118,6 +125,10 @@ class EmployeeSession {
   String? _refreshToken;
   String? _sessionId;
   Future<void>? _refreshing;
+
+  /// Invoked after a 401 could not be recovered by a token refresh and the
+  /// stored session was cleared. The UI should return to the login screen.
+  void Function()? onSessionExpired;
 
   Future<EmployeeIdentity> login(String email, String password) async {
     if (email.trim().isEmpty || !email.contains('@')) {
@@ -157,7 +168,10 @@ class EmployeeSession {
       await _refresh();
       return await _identity();
     } on DlcApiException catch (error) {
-      if (error.code == 'UNAUTHORIZED' || error.code == 'SESSION_INVALID') {
+      if (error.statusCode == 401 ||
+          error.code == 'UNAUTHENTICATED' ||
+          error.code == 'UNAUTHORIZED' ||
+          error.code == 'SESSION_INVALID') {
         await clear();
         return null;
       }
@@ -177,10 +191,24 @@ class EmployeeSession {
 
   Future<EmployeeIdentity> currentIdentity() => _identity();
 
-  Future<List<BranchSummary>> branches({String status = 'active'}) async {
+  /// Non-secret, device-local UI preferences (for example the theme mode).
+  /// Stored under a dedicated prefix so [clear] never touches them.
+  Future<String?> readPreference(String key) =>
+      _storage.read(key: 'operations.pref.$key');
+
+  Future<void> writePreference(String key, String value) =>
+      _storage.write(key: 'operations.pref.$key', value: value);
+
+  Future<List<BranchSummary>> branches({
+    String status = 'active',
+    String? countryCode,
+  }) async {
+    final country = countryCode == null
+        ? ''
+        : '&countryCode=${Uri.encodeQueryComponent(normalizeCountryCode(countryCode))}';
     final payload = await _request(
       'GET',
-      '/branches?status=${Uri.encodeQueryComponent(status)}&limit=100',
+      '/branches?status=${Uri.encodeQueryComponent(status)}&limit=100$country',
     );
     final rows = payload['data'] as List<dynamic>? ?? const [];
     return rows
@@ -196,6 +224,7 @@ class EmployeeSession {
     required String timezone,
     required String profile,
     required int expectedDispenserCount,
+    String countryCode = kDefaultCountryCode,
   }) async => _data(
     await _request(
       'POST',
@@ -205,6 +234,7 @@ class EmployeeSession {
         'name': name.trim(),
         'zone': zone,
         'timezone': timezone.trim(),
+        'countryCode': normalizeCountryCode(countryCode),
         'profile': profile,
         'expectedDispenserCount': expectedDispenserCount,
       },
@@ -603,8 +633,13 @@ class EmployeeSession {
     ),
   );
 
-  Future<List<Map<String, dynamic>>> suppliers() async {
-    final payload = await _request('GET', '/suppliers?limit=100');
+  /// [branchId] is required for branch-scoped users (the server authorizes
+  /// `GET /suppliers` against the branch in the query).
+  Future<List<Map<String, dynamic>>> suppliers({String? branchId}) async {
+    final scope = branchId == null
+        ? ''
+        : '&branchId=${Uri.encodeQueryComponent(branchId)}';
+    final payload = await _request('GET', '/suppliers?limit=100$scope');
     return (payload['data'] as List<dynamic>? ?? const [])
         .whereType<Map<String, dynamic>>()
         .map((row) => Map<String, dynamic>.from(row))
@@ -1265,6 +1300,25 @@ class EmployeeSession {
         await _storage.delete(key: storageKey);
       rethrow;
     }
+  }
+
+  /// Consolidated network metrics (`GET /metrics/network/dashboard`).
+  /// [days] is 1, 7 or 30. [branchId] and [countryCode] are optional filters;
+  /// the response may include `countries: [{countryCode, branchCount}]`
+  /// (see [NetworkCountry.listFrom]).
+  Future<Map<String, dynamic>> networkDashboard({
+    int days = 7,
+    String? branchId,
+    String? countryCode,
+  }) async {
+    final query = <String>[
+      'days=$days',
+      if (branchId != null) 'branchId=${Uri.encodeQueryComponent(branchId)}',
+      if (countryCode != null)
+        'countryCode=${Uri.encodeQueryComponent(normalizeCountryCode(countryCode))}',
+    ].join('&');
+    final payload = await _request('GET', '/metrics/network/dashboard?$query');
+    return Map<String, dynamic>.from(payload['data'] as Map? ?? const {});
   }
 
   Future<Map<String, dynamic>> branchDashboard(String branchId) async {
@@ -2016,16 +2070,10 @@ class EmployeeSession {
         '/branches/${Uri.encodeComponent(branchId)}/sales/${Uri.encodeComponent(saleId)}/receipt.pdf';
     final uri = base.replace(path: '$prefix$path');
     final requestId = _uuidV4();
-    final response = await _client
-        .get(
-          uri,
-          headers: {
-            'Accept': 'application/pdf',
-            'Authorization': 'Bearer $_accessToken',
-            'X-Request-ID': requestId,
-          },
-        )
-        .timeout(const Duration(seconds: 30));
+    final response = await _authorizedGet(uri, {
+      'Accept': 'application/pdf',
+      'X-Request-ID': requestId,
+    }, const Duration(seconds: 30));
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw DlcApiException(
         'No se pudo descargar el comprobante (HTTP ${response.statusCode}).',
@@ -2049,18 +2097,12 @@ class EmployeeSession {
     final uri = base.replace(path: '$normalizedBase$path');
     final requestId = _uuidV4();
     try {
-      final response = await _client
-          .get(
-            uri,
-            headers: {
-              'Accept': pdf
-                  ? 'application/pdf'
-                  : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-              'Authorization': 'Bearer $_accessToken',
-              'X-Request-ID': requestId,
-            },
-          )
-          .timeout(const Duration(seconds: 30));
+      final response = await _authorizedGet(uri, {
+        'Accept': pdf
+            ? 'application/pdf'
+            : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'X-Request-ID': requestId,
+      }, const Duration(seconds: 30));
       if (response.statusCode < 200 || response.statusCode >= 300) {
         String message =
             'No se pudo exportar el reporte (HTTP ${response.statusCode}).';
@@ -2170,7 +2212,76 @@ class EmployeeSession {
     ]);
   }
 
+  /// Sends an API request. An authenticated request answered with HTTP 401 is
+  /// retried exactly once after a (single-flight) token refresh; if the refresh
+  /// is rejected the session is cleared and a session-expired error is thrown.
   Future<Map<String, dynamic>> _request(
+    String method,
+    String path, {
+    Map<String, dynamic>? body,
+    bool authenticated = true,
+  }) async {
+    final usedToken = _accessToken;
+    try {
+      return await _send(
+        method,
+        path,
+        body: body,
+        authenticated: authenticated,
+      );
+    } on DlcApiException catch (error) {
+      if (!authenticated || error.statusCode != 401) rethrow;
+      await _recoverFromUnauthorized(usedToken);
+      return _send(method, path, body: body, authenticated: authenticated);
+    }
+  }
+
+  /// Refreshes the session after a 401 (or reuses a refresh that already
+  /// completed since [usedToken] was issued). Throws when it cannot recover.
+  Future<void> _recoverFromUnauthorized(String? usedToken) async {
+    final current = _accessToken ?? '';
+    if (current.isNotEmpty && current != usedToken) return;
+    if ((_refreshToken ?? '').isEmpty) {
+      await _expireSession();
+    }
+    try {
+      await _refresh();
+    } on DlcApiException catch (error) {
+      if (error.statusCode == null) rethrow; // network failure: keep session
+      await _expireSession();
+    }
+  }
+
+  Never _sessionExpired() => throw const DlcApiException(
+    'Tu sesión expiró. Inicia sesión de nuevo.',
+    code: 'SESSION_EXPIRED',
+    statusCode: 401,
+  );
+
+  Future<Never> _expireSession() async {
+    await clear();
+    onSessionExpired?.call();
+    _sessionExpired();
+  }
+
+  /// GET with bearer auth for binary downloads, with the same single 401
+  /// refresh-and-retry behaviour as [_request].
+  Future<http.Response> _authorizedGet(
+    Uri uri,
+    Map<String, String> headers,
+    Duration timeout,
+  ) async {
+    Future<http.Response> send() => _client
+        .get(uri, headers: {...headers, 'Authorization': 'Bearer $_accessToken'})
+        .timeout(timeout);
+    final usedToken = _accessToken;
+    final response = await send();
+    if (response.statusCode != 401) return response;
+    await _recoverFromUnauthorized(usedToken);
+    return send();
+  }
+
+  Future<Map<String, dynamic>> _send(
     String method,
     String path, {
     Map<String, dynamic>? body,

@@ -1,4 +1,5 @@
 import 'package:dlc_api/dlc_api.dart';
+import 'app_theme.dart';
 import 'package:flutter/material.dart';
 
 class LoyaltyProgramsScreen extends StatefulWidget {
@@ -162,7 +163,7 @@ class _LoyaltyProgramsScreenState extends State<LoyaltyProgramsScreen> {
                 ),
                 if (error != null)
                   Card(
-                    color: const Color(0xffffe9e4),
+                    color: context.dlc.criticalContainer,
                     child: ListTile(
                       leading: const Icon(Icons.error_outline),
                       title: Text(error!),
@@ -212,11 +213,11 @@ class _LoyaltyProgramsScreenState extends State<LoyaltyProgramsScreen> {
                   'Usa 0 para mantener el pago con puntos desactivado. Máximo USD 1,000 por punto.',
             ),
           ),
-          const Padding(
+          Padding(
             padding: EdgeInsets.only(top: 8),
             child: Text(
               'La conversión aprobada habilita cotizaciones con confirmación del Cliente. Mantén la tasa en 0 en producción hasta implementar y probar los reversos de puntos por devolución.',
-              style: TextStyle(color: Colors.deepOrange),
+              style: TextStyle(color: context.dlc.warning),
             ),
           ),
           const SizedBox(height: 8),

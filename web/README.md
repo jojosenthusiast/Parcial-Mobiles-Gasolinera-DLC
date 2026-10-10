@@ -39,6 +39,13 @@ Algunas áreas siguen siendo de consulta desde esta interfaz. Una acción solo s
 
 Los módulos muestran datos devueltos por la API; no usan fixtures ni métricas inventadas. Si una operación depende de un permiso ausente, el módulo no aparece. La lista y los detalles conservan el ámbito de sucursal validado en el servidor.
 
+## Tema, países, gráficos y validación
+
+- **Tema claro/oscuro/sistema**: el interruptor de la cabecera (y del login) guarda la preferencia en `localStorage` (`dlc.theme`, con `try/catch`). La paleta vive en variables CSS de `styles.css`; el modo oscuro solo redefine esos tokens (`prefers-color-scheme` salvo que se fuerce claro, y `data-theme="dark"`). `theme.js` se carga como script clásico externo porque la CSP prohíbe scripts en línea.
+- **Filtro por país**: el dashboard consolidado combina país y sucursal y consulta `/metrics/network/dashboard?days=&branchId=&countryCode=`. Las opciones salen de `countries` en la respuesta y, si el servidor es anterior, se derivan de la lista de sucursales (país por defecto `SV`). El alta e identidad de sucursal envían `countryCode`.
+- **Gráficos**: niveles de tanque por combustible (crítico ≤ 30 %, medio ≤ 60 %, óptimo > 60 %, con texto e icono) y tendencia diaria de ventas en SVG propio, con alternativa textual y sin animación si el sistema pide reducir movimiento. La CSP bloquea atributos `style`; las dimensiones dinámicas usan `data-w`/`data-h` que `panel-ui.js` aplica por CSSOM.
+- **Validación en tiempo real**: `panel-ui.js` añade mensajes por campo (`aria-invalid`, `aria-describedby`) y bloquea el envío hasta que el formulario sea válido. Atributos opcionales: `data-msg-min|max|pattern|cross|length`, `data-gt|gte|lt|lte="otroCampo"`, `data-positive` y `data-max-for` (límite según la opción elegida). `data-validate="off"` excluye un formulario y `data-validate="messages"` muestra mensajes sin bloquear.
+
 ## Pruebas
 
 ```powershell

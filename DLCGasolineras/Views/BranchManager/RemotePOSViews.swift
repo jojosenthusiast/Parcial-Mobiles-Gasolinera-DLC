@@ -100,7 +100,7 @@ struct RemoteCombinedReceiptComposer: View {
                 if let receipt = vm.receipt {
                     Section {
                         VStack(alignment: .leading, spacing: 8) {
-                            Label("Comprobante interno", systemImage: "doc.text.image").font(.headline).foregroundStyle(DLCTheme.forest)
+                            Label("Comprobante interno", systemImage: "doc.text.image").font(.headline).foregroundStyle(DLCTheme.ink)
                             Text("Total combinado: $\(receipt.totalUsd)").font(.title3.monospacedDigit().weight(.bold))
                             Text("\(combinedCollectionTitle(receipt.collectionStatus)) · No es comprobante fiscal. Los cobros e impuestos se conservan por venta.")
                                 .font(.caption).foregroundStyle(DLCTheme.muted).fixedSize(horizontal: false, vertical: true)
@@ -123,12 +123,12 @@ struct RemoteCombinedReceiptComposer: View {
                                     Image(systemName: selectedPOSSaleID == sale.id ? "checkmark.circle.fill" : "circle")
                                         .foregroundStyle(selectedPOSSaleID == sale.id ? DLCTheme.orange : DLCTheme.muted)
                                     VStack(alignment: .leading, spacing: 4) {
-                                        Text(sale.description).font(.subheadline.weight(.semibold)).foregroundStyle(DLCTheme.forest)
+                                        Text(sale.description).font(.subheadline.weight(.semibold)).foregroundStyle(DLCTheme.ink)
                                         Text("\(sale.lineCount) líneas · pendiente de cobro")
                                             .font(.caption).foregroundStyle(DLCTheme.muted)
                                     }
                                     Spacer()
-                                    Text("$\(sale.totalUsd)").font(.subheadline.monospacedDigit().weight(.bold)).foregroundStyle(DLCTheme.forest)
+                                    Text("$\(sale.totalUsd)").font(.subheadline.monospacedDigit().weight(.bold)).foregroundStyle(DLCTheme.ink)
                                 }
                             }
                             .buttonStyle(.plain)
@@ -446,7 +446,7 @@ struct RemoteCashCenterView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(alignment: .top) {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("Caja por turno").font(.title2.bold()).foregroundStyle(DLCTheme.forest)
+                            Text("Caja por turno").font(.title2.bold()).foregroundStyle(DLCTheme.ink)
                             Text("Apertura, movimientos y arqueo conciliado")
                                 .font(.subheadline).foregroundStyle(DLCTheme.muted)
                         }
@@ -454,11 +454,11 @@ struct RemoteCashCenterView: View {
                         Image(systemName: "dollarsign.arrow.circlepath")
                             .font(.title2.weight(.semibold)).foregroundStyle(.white)
                             .frame(width: 48, height: 48)
-                            .background(LinearGradient(colors: [DLCTheme.orange, DLCTheme.yellow], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 16))
+                            .background(LinearGradient(colors: [DLCTheme.orangeFill, DLCTheme.yellowFill], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 16))
                             .accessibilityHidden(true)
                     }
                     HStack(spacing: 8) {
-                        CashMetricPill(title: "Cajas", value: "\(vm.registers.count)", color: DLCTheme.forest)
+                        CashMetricPill(title: "Cajas", value: "\(vm.registers.count)", color: DLCTheme.ink)
                         CashMetricPill(title: "Turnos abiertos", value: "\(openRegisters)", color: openRegisters > 0 ? DLCTheme.green : DLCTheme.muted)
                     }
                 }
@@ -479,7 +479,7 @@ struct RemoteCashCenterView: View {
                     ForEach(vm.pending) { draft in
                         VStack(alignment: .leading, spacing: 8) {
                             Label("Comando guardado", systemImage: "arrow.triangle.2.circlepath")
-                                .font(.subheadline.weight(.semibold)).foregroundStyle(DLCTheme.forest)
+                                .font(.subheadline.weight(.semibold)).foregroundStyle(DLCTheme.ink)
                             Text("Se conserva el mismo identificador para consultar o reintentar sin duplicar el movimiento.")
                                 .font(.caption).foregroundStyle(DLCTheme.muted).fixedSize(horizontal: false, vertical: true)
                             Button("Consultar estado del comando") { Task { await vm.retry(draft) } }
@@ -505,7 +505,7 @@ struct RemoteCashCenterView: View {
                                     .frame(width: 42, height: 42)
                                     .background(register.openSessionId == nil ? DLCTheme.orangeBG : DLCTheme.greenBG, in: RoundedRectangle(cornerRadius: 13))
                                 VStack(alignment: .leading, spacing: 3) {
-                                    Text("Caja \(register.code)").font(.headline).foregroundStyle(DLCTheme.forest)
+                                    Text("Caja \(register.code)").font(.headline).foregroundStyle(DLCTheme.ink)
                                     Text(register.openSessionId == nil ? "Sin turno abierto" : "Turno en curso · entra para ver movimientos")
                                         .font(.caption).foregroundStyle(DLCTheme.muted)
                                 }
@@ -520,7 +520,7 @@ struct RemoteCashCenterView: View {
                                         canDecideVariance: canDecideVariance)
                                 } label: {
                                     Label("Abrir turno y arqueo", systemImage: "arrow.right.circle.fill")
-                                        .font(.subheadline.weight(.semibold)).foregroundStyle(DLCTheme.forest)
+                                        .font(.subheadline.weight(.semibold)).foregroundStyle(DLCTheme.ink)
                                 }
                                 .buttonStyle(.plain)
                                 .padding(.top, 2)
@@ -578,7 +578,7 @@ struct RemoteCashCenterView: View {
                                 .foregroundStyle(cashReviewStatusColor(review.status))
                                 .font(.title3)
                             VStack(alignment: .leading, spacing: 3) {
-                                Text(cashReviewStatusTitle(review.status)).font(.subheadline.weight(.semibold)).foregroundStyle(DLCTheme.forest)
+                                Text(cashReviewStatusTitle(review.status)).font(.subheadline.weight(.semibold)).foregroundStyle(DLCTheme.ink)
                                 Text(review.closedAt?.formatted(date: .abbreviated, time: .shortened) ?? "Cierre registrado")
                                     .font(.caption).foregroundStyle(DLCTheme.muted)
                             }
@@ -671,7 +671,7 @@ private struct RemoteCashSessionView: View {
                         HStack(alignment: .top) {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(isClosed ? "Turno cerrado" : "Turno en curso")
-                                    .font(.title2.bold()).foregroundStyle(DLCTheme.forest)
+                                    .font(.title2.bold()).foregroundStyle(DLCTheme.ink)
                                 Text("Abierto \(session.openedAt.formatted(date: .abbreviated, time: .shortened))")
                                     .font(.caption).foregroundStyle(DLCTheme.muted)
                             }
@@ -684,18 +684,18 @@ private struct RemoteCashSessionView: View {
                                 .font(.subheadline.weight(.medium)).foregroundStyle(DLCTheme.muted)
                             Spacer()
                             Text("$\(session.expectedCashUsd)")
-                                .font(.title2.monospacedDigit().weight(.bold)).foregroundStyle(DLCTheme.forest)
+                                .font(.title2.monospacedDigit().weight(.bold)).foregroundStyle(DLCTheme.ink)
                                 .contentTransition(.numericText())
                         }
                         HStack(spacing: 8) {
-                            CashMetricPill(title: "Fondo inicial", value: "$\(session.openingUsd)", color: DLCTheme.forest)
+                            CashMetricPill(title: "Fondo inicial", value: "$\(session.openingUsd)", color: DLCTheme.ink)
                             CashMetricPill(title: "Visibles", value: "\(vm.movements.count)", color: DLCTheme.orange)
                         }
                         if !isClosed && canMove {
                             HStack(spacing: 10) {
                                 cashAction("Entrada", symbol: "plus", kind: "cash_in", tint: DLCTheme.green)
                                 cashAction("Retiro", symbol: "arrow.up.right", kind: "withdrawal", tint: DLCTheme.orange)
-                                cashAction("Depósito", symbol: "building.columns", kind: "deposit", tint: DLCTheme.forest)
+                                cashAction("Depósito", symbol: "building.columns", kind: "deposit", tint: DLCTheme.ink)
                             }
                             .padding(.top, 2)
                         }
@@ -757,7 +757,7 @@ private struct RemoteCashSessionView: View {
                     ForEach(pendingDecisions) { command in
                         VStack(alignment: .leading, spacing: 8) {
                             Label("La decisión quedó guardada en este dispositivo.", systemImage: "arrow.triangle.2.circlepath")
-                                .font(.subheadline.weight(.semibold)).foregroundStyle(DLCTheme.forest)
+                                .font(.subheadline.weight(.semibold)).foregroundStyle(DLCTheme.ink)
                             Text("Se consulta primero el estado del servidor. Si aún está pendiente, se reintenta con el mismo motivo.")
                                 .font(.caption).foregroundStyle(DLCTheme.muted).fixedSize(horizontal: false, vertical: true)
                             Button("Consultar estado / reintentar decisión") { Task { await vm.retryVarianceDecision(command) } }
@@ -795,7 +795,7 @@ private struct RemoteCashSessionView: View {
                         .frame(width: 38, height: 38)
                         .background(cashMovementColor(movement.kind).opacity(0.11), in: RoundedRectangle(cornerRadius: 12))
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(cashMovementTitle(movement.kind)).font(.subheadline.weight(.semibold)).foregroundStyle(DLCTheme.forest)
+                        Text(cashMovementTitle(movement.kind)).font(.subheadline.weight(.semibold)).foregroundStyle(DLCTheme.ink)
                         Text(movement.reason).font(.caption).foregroundStyle(DLCTheme.muted).lineLimit(2)
                         Text(movement.createdAt.formatted(date: .abbreviated, time: .shortened))
                             .font(.caption2).foregroundStyle(DLCTheme.muted)
@@ -923,10 +923,10 @@ private struct CashReviewSummary: View {
 
     @ViewBuilder private func cashReviewRow(_ title: String, _ value: String?, emphasized: Bool = false) -> some View {
         HStack {
-            Text(title).font(emphasized ? .subheadline.weight(.semibold) : .caption).foregroundStyle(emphasized ? DLCTheme.forest : DLCTheme.muted)
+            Text(title).font(emphasized ? .subheadline.weight(.semibold) : .caption).foregroundStyle(emphasized ? DLCTheme.ink : DLCTheme.muted)
             Spacer()
             Text(value.map { "$\($0)" } ?? "—").font(emphasized ? .subheadline.monospacedDigit().weight(.bold) : .caption.monospacedDigit())
-                .foregroundStyle(emphasized ? DLCTheme.forest : DLCTheme.muted)
+                .foregroundStyle(emphasized ? DLCTheme.ink : DLCTheme.muted)
         }
     }
 }
@@ -992,7 +992,7 @@ private struct RemoteCashVarianceDecisionSheet: View {
                         Label(decision == "approved" ? "Aprobar diferencia" : "Rechazar diferencia", systemImage: decision == "approved" ? "checkmark.circle.fill" : "xmark.circle.fill")
                             .frame(maxWidth: .infinity, alignment: .center)
                     }
-                    .buttonStyle(.borderedProminent).tint(decision == "approved" ? DLCTheme.forest : DLCTheme.red)
+                    .buttonStyle(.borderedProminent).tint(decision == "approved" ? DLCTheme.forest : DLCTheme.redFill)
                     .disabled(!canSubmit)
                 }
             }

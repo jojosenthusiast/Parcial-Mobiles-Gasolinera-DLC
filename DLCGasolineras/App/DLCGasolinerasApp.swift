@@ -4,14 +4,17 @@ import Charts
 @main
 struct DLCGasolinerasApp: App {
     @StateObject private var appState = AppState()
+    @AppStorage(DLCAppearance.storageKey) private var appearanceRaw = DLCAppearance.system.rawValue
 
     var body: some Scene {
         WindowGroup {
             RootContentView()
                 .environmentObject(appState)
-                .preferredColorScheme(.light)
+                .preferredColorScheme((DLCAppearance(rawValue: appearanceRaw) ?? .system).colorScheme)
         }
     }
+}
+
 /// Vista raíz de la aplicación.
 /// Se mantiene en este archivo para conservar exactamente la estructura solicitada.
 private struct RootContentView: View {
@@ -52,7 +55,11 @@ private struct RemoteSessionHomeView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                LogoView()
+                HStack(alignment: .top) {
+                    LogoView()
+                    Spacer()
+                    AppearancePicker()
+                }
                 Text(identity.roles.contains(where: \.isGeneralManager) ? "Resumen de la red" : "Operación de mi sucursal")
                     .font(.largeTitle.weight(.bold))
                 if let client = appState.remoteMetricsClient {
@@ -765,7 +772,7 @@ private struct RemoteNetworkDashboardView: View {
                     .frame(maxWidth: .infinity).padding(.vertical, 12)
             }
             .buttonStyle(.bordered)
-            .tint(DLCTheme.forest)
+            .tint(DLCTheme.ink)
         }
         .animation(reduceMotion ? nil : .spring(response: 0.42, dampingFraction: 0.86), value: dashboardQueryKey)
         .task(id: dashboardQueryKey) { await reload() }
@@ -1067,5 +1074,10 @@ private struct RemoteReportCenterView: View {
 #Preview("Inicio de sesión") {
     LoginView()
         .environmentObject(AppState())
-        .preferredColorScheme(.light)
+}
+
+#Preview("Inicio de sesión (oscuro)") {
+    LoginView()
+        .environmentObject(AppState())
+        .preferredColorScheme(.dark)
 }

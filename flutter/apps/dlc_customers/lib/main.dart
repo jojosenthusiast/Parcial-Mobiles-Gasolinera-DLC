@@ -9,6 +9,8 @@ import 'package:http/http.dart' as http;
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'haptics.dart';
+
 const _apiUrl = String.fromEnvironment(
   'DLC_API_BASE_URL',
   defaultValue: 'http://10.0.2.2:4000/api/v1',
@@ -26,6 +28,52 @@ const _authRedirect = String.fromEnvironment(
 const _ink = Color(0xff213b32),
     _orange = Color(0xffd94d24),
     _paper = Color(0xfff5f0e5);
+// Dark-mode counterparts: lighter tones so brand colours keep contrast on dark surfaces.
+const _inkDark = Color(0xffa9d1bd),
+    _orangeDark = Color(0xffff8a5c),
+    _paperDark = Color(0xff111a16),
+    _cardDark = Color(0xff1d2a25);
+
+final _emailPattern = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
+
+/// Shared rules: the same functions drive inline feedback and submission.
+String? validateEmail(String? value) =>
+    _emailPattern.hasMatch((value ?? '').trim())
+    ? null
+    : 'Escribe un correo válido.';
+
+String? validatePassword(String? value) => (value ?? '').length < 8
+    ? 'La contraseña debe tener al menos 8 caracteres.'
+    : null;
+
+String? validateFullName(String? value) =>
+    (value ?? '').trim().length < 2 ? 'Escribe tu nombre completo.' : null;
+
+/// Brand theme for one brightness. Light and dark share seed and component
+/// theming; only the palette differs.
+ThemeData buildDlcTheme(Brightness brightness) {
+  final dark = brightness == Brightness.dark;
+  final paper = dark ? _paperDark : _paper;
+  final scheme = ColorScheme.fromSeed(
+    seedColor: _ink,
+    brightness: brightness,
+    primary: dark ? _inkDark : _ink,
+    secondary: dark ? _orangeDark : _orange,
+  );
+  return ThemeData(
+    useMaterial3: true,
+    colorScheme: scheme,
+    scaffoldBackgroundColor: paper,
+    appBarTheme: AppBarTheme(
+      backgroundColor: paper,
+      foregroundColor: scheme.primary,
+    ),
+    cardTheme: CardThemeData(
+      color: dark ? _cardDark : Colors.white,
+      elevation: 0,
+    ),
+  );
+}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -55,28 +103,29 @@ Future<void> main() async {
   runApp(const CustomerApp());
 }
 
-class CustomerApp extends StatelessWidget {
+class CustomerApp extends StatefulWidget {
   const CustomerApp({super.key});
+  @override
+  State<CustomerApp> createState() => _CustomerAppState();
+}
+
+class _CustomerAppState extends State<CustomerApp> {
+  // In-memory only: the choice resets when the app restarts.
+  ThemeMode _themeMode = ThemeMode.system;
+
   @override
   Widget build(BuildContext context) => MaterialApp(
     title: 'DLC Clientes',
     debugShowCheckedModeBanner: false,
-    theme: ThemeData(
-      useMaterial3: true,
-      scaffoldBackgroundColor: _paper,
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: _ink,
-        primary: _ink,
-        secondary: _orange,
-      ),
-      appBarTheme: const AppBarTheme(
-        backgroundColor: _paper,
-        foregroundColor: _ink,
-      ),
-    ),
+    theme: buildDlcTheme(Brightness.light),
+    darkTheme: buildDlcTheme(Brightness.dark),
+    themeMode: _themeMode,
     home: (_supabaseUrl.isEmpty || _supabaseKey.isEmpty)
         ? const ConfigurationScreen()
-        : const CustomerRoot(),
+        : CustomerRoot(
+            themeMode: _themeMode,
+            onThemeModeChanged: (mode) => setState(() => _themeMode = mode),
+          ),
   );
 }
 
@@ -214,7 +263,13 @@ String _newId() {
 }
 
 class CustomerRoot extends StatefulWidget {
-  const CustomerRoot({super.key});
+  const CustomerRoot({
+    super.key,
+    required this.themeMode,
+    required this.onThemeModeChanged,
+  });
+  final ThemeMode themeMode;
+  final ValueChanged<ThemeMode> onThemeModeChanged;
   @override
   State<CustomerRoot> createState() => _CustomerRootState();
 }
@@ -224,6 +279,7 @@ class _CustomerRootState extends State<CustomerRoot> {
   final TextEditingController branchSearch = TextEditingController();
   Session? get session => Supabase.instance.client.auth.currentSession;
   User? get user => Supabase.instance.client.auth.currentUser;
+  ColorScheme get _scheme => Theme.of(context).colorScheme;
   Map<String, dynamic>? profile;
   Map<String, dynamic>? loyalty;
   Map<String, dynamic>? qr;
@@ -331,14 +387,17 @@ class _CustomerRootState extends State<CustomerRoot> {
     }
   }
 
-  Future<void> _run(Future<void> Function() action) async {
-    if (busy) return;
+  /// Runs [action] behind the busy flag. Returns true on success; on failure
+  /// it shows the error banner and plays the error haptic.
+  Future<bool> _run(Future<void> Function() action) async {
+    if (busy) return false;
     setState(() {
       busy = true;
       error = null;
     });
     try {
       await action();
+      return true;
     } on AuthException catch (e) {
       if (mounted) setState(() => error = e.message);
     } on CustomerApiError catch (e) {
@@ -362,7 +421,15 @@ class _CustomerRootState extends State<CustomerRoot> {
     } finally {
       if (mounted) setState(() => busy = false);
     }
+    Haptics.error();
+    return false;
   }
+
+  Future<bool> _signOut() => _run(() async {
+    await Supabase.instance.client.auth.signOut();
+    await _reload();
+    Haptics.selection();
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -391,12 +458,7 @@ class _CustomerRootState extends State<CustomerRoot> {
           if (signedIn)
             IconButton(
               tooltip: 'Cerrar sesión',
-              onPressed: busy
-                  ? null
-                  : () => _run(() async {
-                      await Supabase.instance.client.auth.signOut();
-                      await _reload();
-                    }),
+              onPressed: busy ? null : _signOut,
               icon: const Icon(Icons.logout),
             ),
         ],
@@ -404,7 +466,7 @@ class _CustomerRootState extends State<CustomerRoot> {
       body: SafeArea(
         child: Column(
           children: [
-            if (error != null) _errorBanner(error!),
+            if (error != null) _errorBanner(context, error!),
             Expanded(
               child: recoveringPassword
                   ? RecoveryPasswordScreen(
@@ -484,43 +546,43 @@ class _CustomerRootState extends State<CustomerRoot> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'PUNTOS DISPONIBLES',
               style: TextStyle(
                 letterSpacing: 1.2,
                 fontWeight: FontWeight.w700,
-                color: _ink,
+                color: _scheme.primary,
               ),
             ),
             const SizedBox(height: 8),
             Text(
               '${loyalty?['pointsBalance'] ?? '0'}',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 42,
                 fontWeight: FontWeight.w800,
-                color: _ink,
+                color: _scheme.primary,
               ),
             ),
             Text(
               loyalty?['canRedeem'] == true
                   ? 'Valor para canje: ${_usd(loyalty?['availableValueUsd'])} USD'
                   : 'Canje de puntos no habilitado actualmente',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
-                color: _ink,
+                color: _scheme.primary,
               ),
             ),
             if (loyalty?['canRedeem'] == true)
               Text(
                 'Tasa vigente: 1 punto = ${_usd(loyalty?['redemptionUsdPerPoint'])} USD',
-                style: const TextStyle(color: Colors.black54),
+                style: TextStyle(color: _scheme.onSurfaceVariant),
               ),
             const SizedBox(height: 8),
             Text(
               loyalty?['message']?.toString() ??
                   'Consulta el historial de puntos.',
-              style: const TextStyle(color: Colors.black54),
+              style: TextStyle(color: _scheme.onSurfaceVariant),
             ),
           ],
         ),
@@ -531,9 +593,9 @@ class _CustomerRootState extends State<CustomerRoot> {
           'Solicitudes de pago en caja',
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
-        const Text(
+        Text(
           'Revisa el importe y los puntos antes de autorizar. Cada solicitud vence en poco tiempo.',
-          style: TextStyle(color: Colors.black54),
+          style: TextStyle(color: _scheme.onSurfaceVariant),
         ),
         ...pointPaymentQuotes.map(_pointPaymentQuoteCard),
       ],
@@ -550,7 +612,7 @@ class _CustomerRootState extends State<CustomerRoot> {
       ...points.map(
         (row) => ListTile(
           contentPadding: EdgeInsets.zero,
-          leading: const Icon(Icons.bolt, color: _orange),
+          leading: Icon(Icons.bolt, color: _scheme.secondary),
           title: Text(row['reason']?.toString() ?? _label(row['type'])),
           trailing: Text('${row['pointsDelta'] ?? ''} pts'),
         ),
@@ -564,7 +626,7 @@ class _CustomerRootState extends State<CustomerRoot> {
       children: [
         Row(
           children: [
-            const Icon(Icons.point_of_sale_outlined, color: _orange),
+            Icon(Icons.point_of_sale_outlined, color: _scheme.secondary),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
@@ -584,9 +646,9 @@ class _CustomerRootState extends State<CustomerRoot> {
         ),
         Text('Venta total: USD ${quote['saleTotalUsd'] ?? '—'}'),
         const SizedBox(height: 4),
-        const Text(
+        Text(
           'Al confirmar, los puntos se descuentan y el importe se aplica a esta venta. Esta acción no se puede deshacer desde la app.',
-          style: TextStyle(fontSize: 12, color: Colors.black54),
+          style: TextStyle(fontSize: 12, color: _scheme.onSurfaceVariant),
         ),
         const SizedBox(height: 8),
         Row(
@@ -607,7 +669,7 @@ class _CustomerRootState extends State<CustomerRoot> {
     ),
   );
 
-  Future<void> _decidePointPayment(
+  Future<bool> _decidePointPayment(
     Map<String, dynamic> quote,
     bool confirm,
   ) => _run(() async {
@@ -638,6 +700,11 @@ class _CustomerRootState extends State<CustomerRoot> {
           ),
         ),
       );
+    if (confirm) {
+      Haptics.success();
+    } else {
+      Haptics.selection();
+    }
   });
 
   String get _promotionFeedPath => selectedPromotionBranchId == null
@@ -681,7 +748,7 @@ class _CustomerRootState extends State<CustomerRoot> {
         (item) => _card(
           child: ListTile(
             contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.card_giftcard, color: _orange),
+            leading: Icon(Icons.card_giftcard, color: _scheme.secondary),
             title: Text(item['title']?.toString() ?? ''),
             subtitle: Text(item['description']?.toString() ?? ''),
             trailing: Text('${item['pointsCost'] ?? '—'} pts'),
@@ -729,7 +796,7 @@ class _CustomerRootState extends State<CustomerRoot> {
         (item) => _card(
           child: ListTile(
             contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.campaign_outlined, color: _orange),
+            leading: Icon(Icons.campaign_outlined, color: _scheme.secondary),
             title: Text(item['title']?.toString() ?? ''),
             subtitle: Text(item['body']?.toString() ?? ''),
           ),
@@ -825,8 +892,8 @@ class _CustomerRootState extends State<CustomerRoot> {
                   const SizedBox(height: 5),
                   Text(
                     _promotionHeadline(item),
-                    style: const TextStyle(
-                      color: _orange,
+                    style: TextStyle(
+                      color: _scheme.secondary,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -889,7 +956,7 @@ class _CustomerRootState extends State<CustomerRoot> {
       _card(
         child: Column(
           children: [
-            const Icon(Icons.qr_code_2, color: _ink, size: 38),
+            Icon(Icons.qr_code_2, color: _scheme.primary, size: 38),
             const SizedBox(height: 12),
             const Text(
               'Mi código DLC',
@@ -897,10 +964,16 @@ class _CustomerRootState extends State<CustomerRoot> {
             ),
             const SizedBox(height: 18),
             if (qr?['code'] is String)
-              QrImageView(
-                data: qr!['code'] as String,
-                size: 220,
-                backgroundColor: Colors.white,
+              // The QR always sits on white with a quiet zone, in both themes,
+              // so scanners can read it in dark mode too.
+              Container(
+                color: Colors.white,
+                padding: const EdgeInsets.all(12),
+                child: QrImageView(
+                  data: qr!['code'] as String,
+                  size: 220,
+                  backgroundColor: Colors.white,
+                ),
               )
             else
               const CircularProgressIndicator(),
@@ -908,7 +981,7 @@ class _CustomerRootState extends State<CustomerRoot> {
             Text(
               qr?['message']?.toString() ?? '',
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.black54),
+              style: TextStyle(color: _scheme.onSurfaceVariant),
             ),
             const SizedBox(height: 10),
             SelectableText(qr?['code']?.toString() ?? ''),
@@ -930,21 +1003,53 @@ class _CustomerRootState extends State<CustomerRoot> {
               style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 14),
-            _detail('Nombre', profile?['fullName']),
-            _detail('Correo', user?.email),
-            _detail('Teléfono', profile?['phone'] ?? 'No registrado'),
-            _detail('Cuenta desde', profile?['createdAt']),
+            _detail(context, 'Nombre', profile?['fullName']),
+            _detail(context, 'Correo', user?.email),
+            _detail(context, 'Teléfono', profile?['phone'] ?? 'No registrado'),
+            _detail(context, 'Cuenta desde', profile?['createdAt']),
+          ],
+        ),
+      ),
+      const SizedBox(height: 12),
+      _card(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Apariencia',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            SegmentedButton<ThemeMode>(
+              segments: const [
+                ButtonSegment(
+                  value: ThemeMode.light,
+                  icon: Icon(Icons.light_mode_outlined),
+                  label: Text('Claro'),
+                ),
+                ButtonSegment(
+                  value: ThemeMode.dark,
+                  icon: Icon(Icons.dark_mode_outlined),
+                  label: Text('Oscuro'),
+                ),
+                ButtonSegment(
+                  value: ThemeMode.system,
+                  icon: Icon(Icons.brightness_auto_outlined),
+                  label: Text('Sistema'),
+                ),
+              ],
+              selected: {widget.themeMode},
+              onSelectionChanged: (selection) {
+                Haptics.selection();
+                widget.onThemeModeChanged(selection.first);
+              },
+            ),
           ],
         ),
       ),
       const SizedBox(height: 12),
       OutlinedButton.icon(
-        onPressed: busy
-            ? null
-            : () => _run(() async {
-                await Supabase.instance.client.auth.signOut();
-                await _reload();
-              }),
+        onPressed: busy ? null : _signOut,
         icon: const Icon(Icons.logout),
         label: const Text('Cerrar sesión'),
       ),
@@ -980,17 +1085,19 @@ class AuthScreen extends StatefulWidget {
     required this.onChanged,
   });
   final bool busy;
-  final Future<void> Function(Future<void> Function()) onAction;
+  final Future<bool> Function(Future<void> Function()) onAction;
   final VoidCallback onChanged;
   @override
   State<AuthScreen> createState() => _AuthScreenState();
 }
 
 class _AuthScreenState extends State<AuthScreen> {
+  final _formKey = GlobalKey<FormState>();
   final email = TextEditingController(),
       password = TextEditingController(),
       name = TextEditingController();
   bool register = false;
+  ColorScheme get _scheme => Theme.of(context).colorScheme;
   @override
   void dispose() {
     email.dispose();
@@ -999,144 +1106,153 @@ class _AuthScreenState extends State<AuthScreen> {
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) => ListView(
-    padding: const EdgeInsets.all(24),
-    children: [
-      const SizedBox(height: 24),
-      const Icon(Icons.local_gas_station, color: _orange, size: 48),
-      const SizedBox(height: 12),
-      Text(
-        register ? 'Crea tu cuenta' : 'Bienvenido',
-        textAlign: TextAlign.center,
-        style: const TextStyle(
-          fontSize: 28,
-          fontWeight: FontWeight.w800,
-          color: _ink,
-        ),
-      ),
-      const SizedBox(height: 8),
-      const Text(
-        'Accede a tus puntos, novedades y beneficios DLC.',
-        textAlign: TextAlign.center,
-      ),
-      const SizedBox(height: 24),
-      if (register)
-        TextField(
-          controller: name,
-          textCapitalization: TextCapitalization.words,
-          decoration: const InputDecoration(
-            labelText: 'Nombre completo',
-            border: OutlineInputBorder(),
+  Future<void> _submit() async {
+    if (!(_formKey.currentState?.validate() ?? false)) {
+      Haptics.error();
+      return;
+    }
+    await widget.onAction(() async {
+      if (register) {
+        final result = await Supabase.instance.client.auth.signUp(
+          email: email.text.trim(),
+          password: password.text,
+          emailRedirectTo: _authRedirect,
+          data: {'display_name': name.text.trim()},
+        );
+        if (result.session == null && mounted) {
+          await showDialog<void>(
+            context: context,
+            builder: (_) => AlertDialog(
+              title: const Text('Revisa tu correo'),
+              content: const Text(
+                'Enviamos un enlace de confirmación. Ábrelo en este dispositivo; luego inicia sesión.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Entendido'),
+                ),
+              ],
+            ),
+          );
+          setState(() => register = false);
+        }
+      } else {
+        await Supabase.instance.client.auth.signInWithPassword(
+          email: email.text.trim(),
+          password: password.text,
+        );
+      }
+      widget.onChanged();
+      Haptics.success();
+    });
+  }
+
+  Future<void> _resetPassword() => widget.onAction(() async {
+    final problem = validateEmail(email.text);
+    if (problem != null) throw CustomerApiError(problem);
+    await Supabase.instance.client.auth.resetPasswordForEmail(
+      email.text.trim(),
+      redirectTo: _authRedirect,
+    );
+    if (mounted)
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Si el correo está registrado, recibirás instrucciones para restablecer tu contraseña.',
           ),
         ),
-      if (register) const SizedBox(height: 12),
-      TextField(
-        controller: email,
-        keyboardType: TextInputType.emailAddress,
-        autofillHints: const [AutofillHints.email],
-        decoration: const InputDecoration(
-          labelText: 'Correo electrónico',
-          border: OutlineInputBorder(),
-        ),
-      ),
-      const SizedBox(height: 12),
-      TextField(
-        controller: password,
-        obscureText: true,
-        autofillHints: [
-          register ? AutofillHints.newPassword : AutofillHints.password,
+      );
+  });
+
+  @override
+  Widget build(BuildContext context) => Form(
+    key: _formKey,
+    autovalidateMode: AutovalidateMode.onUserInteraction,
+    child: SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const SizedBox(height: 24),
+          Icon(Icons.local_gas_station, color: _scheme.secondary, size: 48),
+          const SizedBox(height: 12),
+          Text(
+            register ? 'Crea tu cuenta' : 'Bienvenido',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.w800,
+              color: _scheme.primary,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Accede a tus puntos, novedades y beneficios DLC.',
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 24),
+          if (register)
+            TextFormField(
+              controller: name,
+              textCapitalization: TextCapitalization.words,
+              validator: validateFullName,
+              decoration: const InputDecoration(
+                labelText: 'Nombre completo',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          if (register) const SizedBox(height: 12),
+          TextFormField(
+            controller: email,
+            keyboardType: TextInputType.emailAddress,
+            autofillHints: const [AutofillHints.email],
+            validator: validateEmail,
+            decoration: const InputDecoration(
+              labelText: 'Correo electrónico',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: password,
+            obscureText: true,
+            autofillHints: [
+              register ? AutofillHints.newPassword : AutofillHints.password,
+            ],
+            validator: validatePassword,
+            decoration: const InputDecoration(
+              labelText: 'Contraseña',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 16),
+          FilledButton(
+            onPressed: widget.busy ? null : _submit,
+            child: widget.busy
+                ? const CircularProgressIndicator()
+                : Text(register ? 'Crear cuenta' : 'Iniciar sesión'),
+          ),
+          TextButton(
+            onPressed: widget.busy
+                ? null
+                : () => setState(() => register = !register),
+            child: Text(register ? 'Ya tengo cuenta' : 'Crear una cuenta'),
+          ),
+          if (!register)
+            TextButton(
+              onPressed: widget.busy ? null : _resetPassword,
+              child: const Text('Olvidé mi contraseña'),
+            ),
+          const SizedBox(height: 10),
+          Text(
+            'Cuenta de prueba: las condiciones legales deben aprobarse antes de activar producción.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 12, color: _scheme.onSurfaceVariant),
+          ),
         ],
-        decoration: const InputDecoration(
-          labelText: 'Contraseña',
-          border: OutlineInputBorder(),
-        ),
       ),
-      const SizedBox(height: 16),
-      FilledButton(
-        onPressed: widget.busy
-            ? null
-            : () => widget.onAction(() async {
-                if (email.text.trim().isEmpty || !email.text.contains('@'))
-                  throw const CustomerApiError('Escribe un correo válido.');
-                if (password.text.length < 8)
-                  throw const CustomerApiError(
-                    'La contraseña debe tener al menos 8 caracteres.',
-                  );
-                if (register) {
-                  if (name.text.trim().length < 2)
-                    throw const CustomerApiError('Escribe tu nombre completo.');
-                  final result = await Supabase.instance.client.auth.signUp(
-                    email: email.text.trim(),
-                    password: password.text,
-                    emailRedirectTo: _authRedirect,
-                    data: {'display_name': name.text.trim()},
-                  );
-                  if (result.session == null && mounted) {
-                    await showDialog<void>(
-                      context: context,
-                      builder: (_) => AlertDialog(
-                        title: const Text('Revisa tu correo'),
-                        content: const Text(
-                          'Enviamos un enlace de confirmación. Ábrelo en este dispositivo; luego inicia sesión.',
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(context),
-                            child: const Text('Entendido'),
-                          ),
-                        ],
-                      ),
-                    );
-                    setState(() => register = false);
-                  }
-                } else {
-                  await Supabase.instance.client.auth.signInWithPassword(
-                    email: email.text.trim(),
-                    password: password.text,
-                  );
-                }
-                widget.onChanged();
-              }),
-        child: widget.busy
-            ? const CircularProgressIndicator()
-            : Text(register ? 'Crear cuenta' : 'Iniciar sesión'),
-      ),
-      TextButton(
-        onPressed: widget.busy
-            ? null
-            : () => setState(() => register = !register),
-        child: Text(register ? 'Ya tengo cuenta' : 'Crear una cuenta'),
-      ),
-      if (!register)
-        TextButton(
-          onPressed: widget.busy
-              ? null
-              : () => widget.onAction(() async {
-                  if (!email.text.contains('@'))
-                    throw const CustomerApiError('Escribe primero tu correo.');
-                  await Supabase.instance.client.auth.resetPasswordForEmail(
-                    email.text.trim(),
-                    redirectTo: _authRedirect,
-                  );
-                  if (mounted)
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                          'Si el correo está registrado, recibirás instrucciones para restablecer tu contraseña.',
-                        ),
-                      ),
-                    );
-                }),
-          child: const Text('Olvidé mi contraseña'),
-        ),
-      const SizedBox(height: 10),
-      const Text(
-        'Cuenta de prueba: las condiciones legales deben aprobarse antes de activar producción.',
-        textAlign: TextAlign.center,
-        style: TextStyle(fontSize: 12, color: Colors.black54),
-      ),
-    ],
+    ),
   );
 }
 
@@ -1147,12 +1263,13 @@ class RecoveryPasswordScreen extends StatefulWidget {
     required this.onSubmit,
   });
   final bool busy;
-  final Future<void> Function(String password) onSubmit;
+  final Future<bool> Function(String password) onSubmit;
   @override
   State<RecoveryPasswordScreen> createState() => _RecoveryPasswordScreenState();
 }
 
 class _RecoveryPasswordScreenState extends State<RecoveryPasswordScreen> {
+  final _formKey = GlobalKey<FormState>();
   final password = TextEditingController();
   @override
   void dispose() {
@@ -1160,40 +1277,46 @@ class _RecoveryPasswordScreenState extends State<RecoveryPasswordScreen> {
     super.dispose();
   }
 
+  void _submit() {
+    if (!(_formKey.currentState?.validate() ?? false)) {
+      Haptics.error();
+      return;
+    }
+    widget.onSubmit(password.text);
+  }
+
   @override
-  Widget build(BuildContext context) => ListView(
-    padding: const EdgeInsets.all(24),
-    children: [
-      const Text(
-        'Crea una contraseña nueva',
-        style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+  Widget build(BuildContext context) => Form(
+    key: _formKey,
+    autovalidateMode: AutovalidateMode.onUserInteraction,
+    child: SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            'Crea una contraseña nueva',
+            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: password,
+            obscureText: true,
+            autofillHints: const [AutofillHints.newPassword],
+            validator: validatePassword,
+            decoration: const InputDecoration(
+              labelText: 'Nueva contraseña',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 12),
+          FilledButton(
+            onPressed: widget.busy ? null : _submit,
+            child: const Text('Guardar contraseña'),
+          ),
+        ],
       ),
-      const SizedBox(height: 16),
-      TextField(
-        controller: password,
-        obscureText: true,
-        autofillHints: const [AutofillHints.newPassword],
-        decoration: const InputDecoration(
-          labelText: 'Nueva contraseña',
-          border: OutlineInputBorder(),
-        ),
-      ),
-      const SizedBox(height: 12),
-      FilledButton(
-        onPressed: widget.busy
-            ? null
-            : () {
-                if (password.text.length < 8) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Usa al menos 8 caracteres.')),
-                  );
-                  return;
-                }
-                widget.onSubmit(password.text);
-              },
-        child: const Text('Guardar contraseña'),
-      ),
-    ],
+    ),
   );
 }
 
@@ -1206,6 +1329,7 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
+  final _formKey = GlobalKey<FormState>();
   final name = TextEditingController(), phone = TextEditingController();
   bool termsAccepted = false, communicationsConsent = false;
   @override
@@ -1215,73 +1339,85 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.dispose();
   }
 
+  void _submit() {
+    if (!(_formKey.currentState?.validate() ?? false)) {
+      Haptics.error();
+      return;
+    }
+    if (!termsAccepted) {
+      Haptics.error();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Debes aceptar las condiciones para crear el perfil.'),
+        ),
+      );
+      return;
+    }
+    widget.onSubmit(name.text, phone.text, communicationsConsent);
+  }
+
   @override
-  Widget build(BuildContext context) => ListView(
-    padding: const EdgeInsets.all(24),
-    children: [
-      const Text(
-        'Completa tu perfil',
-        style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+  Widget build(BuildContext context) => Form(
+    key: _formKey,
+    autovalidateMode: AutovalidateMode.onUserInteraction,
+    child: SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            'Completa tu perfil',
+            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Correo verificado: ${Supabase.instance.client.auth.currentUser?.email ?? ''}',
+          ),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: name,
+            textCapitalization: TextCapitalization.words,
+            validator: validateFullName,
+            decoration: const InputDecoration(
+              labelText: 'Nombre completo',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: phone,
+            keyboardType: TextInputType.phone,
+            decoration: const InputDecoration(
+              labelText: 'Teléfono (opcional)',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          CheckboxListTile(
+            value: termsAccepted,
+            onChanged: (v) => setState(() => termsAccepted = v ?? false),
+            contentPadding: EdgeInsets.zero,
+            title: const Text(
+              'Acepto las condiciones vigentes de la cuenta. Las recompensas solo estarán disponibles cuando se publique el programa.',
+            ),
+            controlAffinity: ListTileControlAffinity.leading,
+          ),
+          CheckboxListTile(
+            value: communicationsConsent,
+            onChanged: (v) =>
+                setState(() => communicationsConsent = v ?? false),
+            contentPadding: EdgeInsets.zero,
+            title: const Text(
+              'Quiero recibir novedades y comunicaciones promocionales (opcional).',
+            ),
+            controlAffinity: ListTileControlAffinity.leading,
+          ),
+          FilledButton(
+            onPressed: widget.busy ? null : _submit,
+            child: const Text('Guardar y continuar'),
+          ),
+        ],
       ),
-      const SizedBox(height: 10),
-      Text(
-        'Correo verificado: ${Supabase.instance.client.auth.currentUser?.email ?? ''}',
-      ),
-      const SizedBox(height: 16),
-      TextField(
-        controller: name,
-        textCapitalization: TextCapitalization.words,
-        decoration: const InputDecoration(
-          labelText: 'Nombre completo',
-          border: OutlineInputBorder(),
-        ),
-      ),
-      const SizedBox(height: 12),
-      TextField(
-        controller: phone,
-        keyboardType: TextInputType.phone,
-        decoration: const InputDecoration(
-          labelText: 'Teléfono (opcional)',
-          border: OutlineInputBorder(),
-        ),
-      ),
-      CheckboxListTile(
-        value: termsAccepted,
-        onChanged: (v) => setState(() => termsAccepted = v ?? false),
-        contentPadding: EdgeInsets.zero,
-        title: const Text(
-          'Acepto las condiciones vigentes de la cuenta. Las recompensas solo estarán disponibles cuando se publique el programa.',
-        ),
-        controlAffinity: ListTileControlAffinity.leading,
-      ),
-      CheckboxListTile(
-        value: communicationsConsent,
-        onChanged: (v) => setState(() => communicationsConsent = v ?? false),
-        contentPadding: EdgeInsets.zero,
-        title: const Text(
-          'Quiero recibir novedades y comunicaciones promocionales (opcional).',
-        ),
-        controlAffinity: ListTileControlAffinity.leading,
-      ),
-      FilledButton(
-        onPressed: widget.busy
-            ? null
-            : () {
-                if (!termsAccepted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'Debes aceptar las condiciones para crear el perfil.',
-                      ),
-                    ),
-                  );
-                  return;
-                }
-                widget.onSubmit(name.text, phone.text, communicationsConsent);
-              },
-        child: const Text('Guardar y continuar'),
-      ),
-    ],
+    ),
   );
 }
 
@@ -1291,30 +1427,41 @@ class _Empty extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 16),
-    child: Text(text, style: const TextStyle(color: Colors.black54)),
+    child: Text(
+      text,
+      style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+    ),
   );
 }
 
 Widget _card({required Widget child}) => Card(
-  color: Colors.white,
   elevation: 0,
   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
   child: Padding(padding: const EdgeInsets.all(18), child: child),
 );
-Widget _errorBanner(String text) => Material(
-  color: const Color(0xffffe7e4),
-  child: Padding(
-    padding: const EdgeInsets.all(12),
-    child: Text(text, style: const TextStyle(color: Color(0xff8b251f))),
-  ),
-);
-Widget _detail(String label, dynamic value) => Padding(
+Widget _errorBanner(BuildContext context, String text) {
+  final scheme = Theme.of(context).colorScheme;
+  return Material(
+    color: scheme.errorContainer,
+    child: Padding(
+      padding: const EdgeInsets.all(12),
+      child: Text(text, style: TextStyle(color: scheme.onErrorContainer)),
+    ),
+  );
+}
+
+Widget _detail(BuildContext context, String label, dynamic value) => Padding(
   padding: const EdgeInsets.symmetric(vertical: 6),
   child: Row(
     children: [
       SizedBox(
         width: 115,
-        child: Text(label, style: const TextStyle(color: Colors.black54)),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
       ),
       Expanded(child: Text(value?.toString() ?? '—')),
     ],
@@ -1330,7 +1477,8 @@ Map<String, dynamic> _map(dynamic value) =>
     value is Map ? Map<String, dynamic>.from(value) : const {};
 String _str(dynamic value) => value?.toString() ?? '';
 String _label(dynamic value) => (value?.toString() ?? '').replaceAll('_', ' ');
-String _usd(dynamic value) => (double.tryParse(value?.toString() ?? '') ?? 0).toStringAsFixed(2);
+String _usd(dynamic value) =>
+    (double.tryParse(value?.toString() ?? '') ?? 0).toStringAsFixed(2);
 String _promotionHeadline(Map<String, dynamic> promotion) => switch (_str(
   promotion['kind'],
 )) {
@@ -1347,111 +1495,119 @@ class PromotionDetailPage extends StatelessWidget {
   const PromotionDetailPage({super.key, required this.promotion});
   final Map<String, dynamic> promotion;
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Detalle de promoción')),
-    body: ListView(
-      padding: const EdgeInsets.all(20),
-      children: [
-        if (_str(promotion['imageUrl']).isNotEmpty)
-          ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: Image.network(
-              _str(promotion['imageUrl']),
-              height: 220,
-              fit: BoxFit.cover,
-              semanticLabel: _str(promotion['imageAlt']),
-              errorBuilder: (_, __, ___) => const SizedBox(
-                height: 120,
-                child: Center(child: Icon(Icons.image_not_supported_outlined)),
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Detalle de promoción')),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          if (_str(promotion['imageUrl']).isNotEmpty)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: Image.network(
+                _str(promotion['imageUrl']),
+                height: 220,
+                fit: BoxFit.cover,
+                semanticLabel: _str(promotion['imageAlt']),
+                errorBuilder: (_, __, ___) => const SizedBox(
+                  height: 120,
+                  child: Center(
+                    child: Icon(Icons.image_not_supported_outlined),
+                  ),
+                ),
               ),
             ),
+          const SizedBox(height: 16),
+          Text(
+            _str(promotion['title']),
+            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
           ),
-        const SizedBox(height: 16),
-        Text(
-          _str(promotion['title']),
-          style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          _promotionHeadline(promotion),
-          style: const TextStyle(
-            fontSize: 19,
-            color: _orange,
-            fontWeight: FontWeight.w800,
+          const SizedBox(height: 8),
+          Text(
+            _promotionHeadline(promotion),
+            style: TextStyle(
+              fontSize: 19,
+              color: scheme.secondary,
+              fontWeight: FontWeight.w800,
+            ),
           ),
-        ),
-        if (_str(promotion['branchName']).isNotEmpty)
-          Text('Sucursal: ${_str(promotion['branchName'])}'),
-        const SizedBox(height: 10),
-        Text(_str(promotion['motive'])),
-        const SizedBox(height: 18),
-        _card(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Vigencia',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                '${_str(promotion['startsAt'])} — ${_str(promotion['endsAt'])}',
-              ),
-              Text('Zona horaria: ${_str(promotion['timeZone'])}'),
-              Text(
-                'Repetición: ${_recurrenceLabel(_map(promotion['recurrence']))}',
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 14),
-        _card(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Aplica cuando',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              ..._strings(_map(promotion['terms'])['applies']).map(
-                (item) => ListTile(
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.check_circle_outline, color: _ink),
-                  title: Text(item),
-                ),
-              ),
-              if (_strings(
-                _map(promotion['terms'])['excludes'],
-              ).isNotEmpty) ...[
-                const Divider(),
+          if (_str(promotion['branchName']).isNotEmpty)
+            Text('Sucursal: ${_str(promotion['branchName'])}'),
+          const SizedBox(height: 10),
+          Text(_str(promotion['motive'])),
+          const SizedBox(height: 18),
+          _card(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                 const Text(
-                  'No aplica en',
+                  'Vigencia',
                   style: TextStyle(fontWeight: FontWeight.bold),
                 ),
-                ..._strings(_map(promotion['terms'])['excludes']).map(
+                const SizedBox(height: 6),
+                Text(
+                  '${_str(promotion['startsAt'])} — ${_str(promotion['endsAt'])}',
+                ),
+                Text('Zona horaria: ${_str(promotion['timeZone'])}'),
+                Text(
+                  'Repetición: ${_recurrenceLabel(_map(promotion['recurrence']))}',
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          _card(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Aplica cuando',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                ..._strings(_map(promotion['terms'])['applies']).map(
                   (item) => ListTile(
                     dense: true,
                     contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.block_outlined),
+                    leading: Icon(
+                      Icons.check_circle_outline,
+                      color: scheme.primary,
+                    ),
                     title: Text(item),
                   ),
                 ),
+                if (_strings(
+                  _map(promotion['terms'])['excludes'],
+                ).isNotEmpty) ...[
+                  const Divider(),
+                  const Text(
+                    'No aplica en',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  ..._strings(_map(promotion['terms'])['excludes']).map(
+                    (item) => ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.block_outlined),
+                      title: Text(item),
+                    ),
+                  ),
+                ],
               ],
-            ],
-          ),
-        ),
-        if (_str(promotion['kind']) == 'cashback')
-          const Padding(
-            padding: EdgeInsets.only(top: 12),
-            child: Text(
-              'El cashback queda sujeto a los términos publicados y a la validación de la entidad financiera participante.',
-              style: TextStyle(fontSize: 12, color: Colors.black54),
             ),
           ),
-      ],
-    ),
-  );
+          if (_str(promotion['kind']) == 'cashback')
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Text(
+                'El cashback queda sujeto a los términos publicados y a la validación de la entidad financiera participante.',
+                style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 }
 
 class CustomerNotificationsPage extends StatefulWidget {
@@ -1473,6 +1629,7 @@ class _CustomerNotificationsPageState extends State<CustomerNotificationsPage> {
   late List<Map<String, dynamic>> items = widget.items;
   String? error;
   final Set<String> busy = {};
+  ColorScheme get _scheme => Theme.of(context).colorScheme;
   Future<void> _read(Map<String, dynamic> item) async {
     final id = _str(item['id']);
     if (id.isEmpty || item['readAt'] != null || busy.contains(id)) return;
@@ -1501,7 +1658,7 @@ class _CustomerNotificationsPageState extends State<CustomerNotificationsPage> {
     body: ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        if (error != null) _errorBanner(error!),
+        if (error != null) _errorBanner(context, error!),
         if (items.isEmpty)
           const _Empty(text: 'No tienes avisos por el momento.'),
         ...items.map(
@@ -1512,7 +1669,9 @@ class _CustomerNotificationsPageState extends State<CustomerNotificationsPage> {
                 item['readAt'] == null
                     ? Icons.notifications_active_outlined
                     : Icons.notifications_none,
-                color: item['readAt'] == null ? _orange : Colors.black45,
+                color: item['readAt'] == null
+                    ? _scheme.secondary
+                    : _scheme.onSurfaceVariant,
               ),
               title: Text(
                 _str(item['title']),

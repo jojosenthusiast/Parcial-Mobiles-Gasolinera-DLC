@@ -70,7 +70,7 @@ test('las pantallas invocadas desde el router tienen implementación', () => {
   assert.match(app, /url\.searchParams\.set\('days',\[1,7,30\]\.includes\(Number\(state\.days\)\)\?String\(state\.days\):'7'\)/);
   assert.match(app, /branch-select'\)\.onchange=e=>\{if\(state\.branchId!==\(e\.target\.value\|\|null\)\)history\.pushState/);
   assert.match(app, /period'\)\.onchange=e=>\{const days=Number\(e\.target\.value\);if\(state\.days!==days\)history\.pushState/);
-  assert.match(app, /requestedBranch&&state\.branches\.some\(b=>b\.id===requestedBranch\)/);
+  assert.match(app, /requestedBranch&&state\.allBranches\.some\(b=>b\.id===requestedBranch\)/);
   assert.match(app, /function filterValue\(key,fallback=''/);
   assert.match(app, /saveFilter\('cuts\.date',date\)/);
   assert.match(app, /saveFilter\('incidents\.query'/);

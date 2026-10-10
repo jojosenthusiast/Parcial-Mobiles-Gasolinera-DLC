@@ -6,6 +6,8 @@ const validID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-
 export function requestID(request: Request, response: Response, next: NextFunction): void {
   const supplied = request.header('x-request-id');
   const id = supplied && validID.test(supplied) ? supplied : randomUUID();
+  // Controllers read the correlation id from the request header; expose the generated one there too.
+  request.headers['x-request-id'] = id;
   response.setHeader('x-request-id', id);
   next();
 }

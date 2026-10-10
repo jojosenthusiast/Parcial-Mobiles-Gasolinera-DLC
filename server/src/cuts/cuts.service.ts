@@ -6,6 +6,9 @@ import { AuditService } from '../audit/audit.service.js';
 import type { AuthPrincipal } from '../auth/auth.types.js';
 import type { CaptureCutMeterDto, CreateCutProfileDto, CutReconciliationPolicyDto, GenerateCutsDto, MeasureCutTankDto, OpenCutDto, PrepareCutDto, ReviewCutDto } from './cuts.dto.js';
 
+/** academicLab22: two daily cuts, morning 06:00-14:00 and evening 14:00-22:00 (branch timezone); 22:00-06:00 is not a cut. */
+const ACADEMIC_CUT_SCHEDULE={dayStart:'06:00',splitAt:'14:00',dayEnd:'22:00'} as const;
+
 @Injectable()
 export class CutsService {
  constructor(@Inject(PG_POOL) private readonly pool:Pool,private readonly auth:AuthService,private readonly audit:AuditService) {}
@@ -21,16 +24,28 @@ export class CutsService {
  }
  async createProfile(branch:string,p:AuthPrincipal,input:CreateCutProfileDto,correlation:string){
   const timezone=await this.access(branch,p,'branch.manage');this.date(input.effectiveDate);
-  if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(input.dayStart)||!/^([01]\d|2[0-3]):[0-5]\d$/.test(input.splitAt)||input.dayStart===input.splitAt)
-   throw new BadRequestException('Elige dos horarios distintos de inicio y división.');
+  const template=await this.pool.query<{profile:string}>('SELECT profile FROM branch_operating_profiles WHERE branch_id=$1 AND organization_id=$2',[branch,p.organizationId]);
+  const time=/^([01]\d|2[0-3]):[0-5]\d$/;
+  let {dayStart,splitAt,dayEnd}=input;
+  if(template.rows[0]?.profile==='academicLab22'){
+   // Fixed template: morning 06:00-14:00 and evening 14:00-22:00 local; 22:00-06:00 is explicitly not a cut.
+   dayStart??=ACADEMIC_CUT_SCHEDULE.dayStart;splitAt??=ACADEMIC_CUT_SCHEDULE.splitAt;dayEnd??=ACADEMIC_CUT_SCHEDULE.dayEnd;
+   if(dayStart!==ACADEMIC_CUT_SCHEDULE.dayStart||splitAt!==ACADEMIC_CUT_SCHEDULE.splitAt||dayEnd!==ACADEMIC_CUT_SCHEDULE.dayEnd)
+    throw new BadRequestException('El perfil académico usa cortes fijos: matutino 06:00-14:00 y vespertino 14:00-22:00.');
+  }else{
+   if(dayEnd!==undefined)throw new BadRequestException('Solo el perfil académico admite un fin de jornada distinto del inicio del día siguiente.');
+   if(!dayStart||!splitAt||!time.test(dayStart)||!time.test(splitAt)||dayStart===splitAt)
+    throw new BadRequestException('Elige dos horarios distintos de inicio y división.');
+  }
   const client=await this.pool.connect();
   try{
    await client.query('BEGIN');
-   const r=await client.query<{id:string}>(`INSERT INTO operational_cut_profiles(organization_id,branch_id,effective_date,day_start,split_at,timezone,created_by)
-    VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id`,[p.organizationId,branch,input.effectiveDate,input.dayStart,input.splitAt,timezone,p.userId]);
+   const r=await client.query<{id:string}>(`INSERT INTO operational_cut_profiles(organization_id,branch_id,effective_date,day_start,split_at,timezone,created_by,day_end)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,[p.organizationId,branch,input.effectiveDate,dayStart,splitAt,timezone,p.userId,dayEnd??null]);
    const id=r.rows[0]!.id;
-   await this.audit.appendTransaction(client,{principal:p,branchId:branch,correlationId:correlation,action:'cut.profile.created',entityType:'operational_cut_profile',entityId:id,after:{effectiveDate:input.effectiveDate,dayStart:input.dayStart,splitAt:input.splitAt,timezone}});
-   await client.query('COMMIT');return {data:{id,effectiveDate:input.effectiveDate,dayStart:input.dayStart,splitAt:input.splitAt,timezone}};
+   const profile={effectiveDate:input.effectiveDate,dayStart,splitAt,dayEnd:dayEnd??null,timezone};
+   await this.audit.appendTransaction(client,{principal:p,branchId:branch,correlationId:correlation,action:'cut.profile.created',entityType:'operational_cut_profile',entityId:id,after:profile});
+   await client.query('COMMIT');return {data:{id,...profile}};
   }catch(error){await client.query('ROLLBACK').catch(()=>undefined);if(['23514','23505'].includes((error as {code?:string}).code??''))throw new ConflictException('El perfil ya existe o afectaría cortes generados.');throw error;}finally{client.release();}
  }
  async generate(branch:string,p:AuthPrincipal,input:GenerateCutsDto){
@@ -39,7 +54,7 @@ export class CutsService {
    const r=await this.pool.query<{cut_id:string;slot:number;starts_at:Date;ends_at:Date}>(
     'SELECT cut_id,slot,starts_at,ends_at FROM generate_operational_cuts($1,$2,$3)',[p.organizationId,branch,input.operationalDate]);
    return {data:r.rows.map(x=>({id:x.cut_id,slot:x.slot,startsAt:x.starts_at,endsAt:x.ends_at}))};
-  }catch(error){if((error as {code?:string}).code==='23514')throw new ConflictException('Configura dos ventanas contiguas; no debe haber huecos ni cortes con otra configuración.');throw error;}
+  }catch(error){if((error as {code?:string}).code==='23514')throw new ConflictException('Configura el perfil de cortes; las ventanas no deben solaparse, dejar huecos no declarados ni cambiar cortes ya generados.');throw error;}
  }
  async list(branch:string,p:AuthPrincipal,date:string){
   await this.access(branch,p,'cut.read');this.date(date);
@@ -111,7 +126,10 @@ export class CutsService {
  }
  async progress(branch:string,id:string,p:AuthPrincipal){
   await this.access(branch,p,'cut.read');
-  const c=await this.pool.query<{id:string;status:string;version:number;startsAt:Date;endsAt:Date}>(`SELECT id,status,version,starts_at AS "startsAt",ends_at AS "endsAt" FROM operational_cuts WHERE id=$1 AND branch_id=$2 AND organization_id=$3`,[id,branch,p.organizationId]);
+  // accountingStartsAt: sales and stock movements from the previous cut's end (the non-cut period, if any) are reconciled here.
+  const c=await this.pool.query<{id:string;status:string;version:number;startsAt:Date;endsAt:Date;accountingStartsAt:Date}>(`SELECT id,status,version,starts_at AS "startsAt",ends_at AS "endsAt",
+    COALESCE((SELECT pc.ends_at FROM operational_cuts pc WHERE pc.id=previous_operational_cut(operational_cuts.id)),starts_at) AS "accountingStartsAt"
+    FROM operational_cuts WHERE id=$1 AND branch_id=$2 AND organization_id=$3`,[id,branch,p.organizationId]);
   const cut=c.rows[0];if(!cut)throw new NotFoundException('Corte fuera de tu sucursal.');
   const [readings,dispenses,movements]=await Promise.all([
    this.pool.query(`SELECT n.fuel_product_id AS "fuelProductId",fp.display_name AS "productName",count(*) FILTER(WHERE n.participation='expected')::integer AS expected,
@@ -123,11 +141,11 @@ export class CutsService {
     COALESCE(sum(a.sale_amount_usd),0)::text AS "salesUsd" FROM dispense_authorizations a
     JOIN fuel_products fp ON fp.id=a.fuel_product_id AND fp.organization_id=a.organization_id
     WHERE a.organization_id=$1 AND a.branch_id=$2 AND a.status='completed' AND a.completed_at >=$3 AND a.completed_at<$4
-    GROUP BY a.fuel_product_id,fp.display_name`,[p.organizationId,branch,cut.startsAt,cut.endsAt]),
+    GROUP BY a.fuel_product_id,fp.display_name`,[p.organizationId,branch,cut.accountingStartsAt,cut.endsAt]),
    this.pool.query(`SELECT im.fuel_product_id AS "fuelProductId",fp.display_name AS "productName",im.movement_type AS type,COALESCE(sum(abs(im.delta_l)),0)::text AS liters
     FROM inventory_movements im JOIN fuel_products fp ON fp.id=im.fuel_product_id AND fp.organization_id=im.organization_id
     WHERE im.organization_id=$1 AND im.branch_id=$2 AND im.occurred_at >=$3 AND im.occurred_at<$4
-      AND im.movement_type IN('receipt','loss') GROUP BY im.fuel_product_id,fp.display_name,im.movement_type`,[p.organizationId,branch,cut.startsAt,cut.endsAt])
+      AND im.movement_type IN('receipt','loss') GROUP BY im.fuel_product_id,fp.display_name,im.movement_type`,[p.organizationId,branch,cut.accountingStartsAt,cut.endsAt])
   ]);
   return {data:{cut,products:readings.rows,postedDispenses:dispenses.rows,stockMovements:movements.rows,
    basis:'operational_window',provisional:cut.status!=='closed'}};

@@ -123,7 +123,7 @@ struct FuelTankDetailView: View {
             Text(title).font(.subheadline).foregroundStyle(DLCTheme.muted)
             Spacer()
             Text("\(Int(value.rounded()).formatted()) \(suffix)")
-                .font(.subheadline.weight(.semibold)).foregroundStyle(DLCTheme.forest)
+                .font(.subheadline.weight(.semibold)).foregroundStyle(DLCTheme.ink)
         }
         .accessibilityElement(children: .combine)
     }
@@ -151,13 +151,16 @@ struct SalesCard: View {
 }
 
 struct PrimaryButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.headline)
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 15)
-            .background(DLCTheme.orange.opacity(configuration.isPressed ? 0.82 : 1))
+            .background(DLCTheme.orangeFill.opacity(configuration.isPressed ? 0.82 : 1))
             .clipShape(RoundedRectangle(cornerRadius: 13))
+            .opacity(isEnabled ? 1 : 0.45)
     }
 }

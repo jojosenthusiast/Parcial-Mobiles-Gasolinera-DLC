@@ -147,7 +147,7 @@ export class CustomerService {
 
   async branches() {
     const result = await this.pool.query(
-      `SELECT id, code, name, zone, timezone FROM branches WHERE organization_id=$1 AND status='active' ORDER BY name,id`, [this.organizationId()],
+      `SELECT id, code, name, zone, timezone, country_code AS "countryCode" FROM branches WHERE organization_id=$1 AND status='active' ORDER BY name,id`, [this.organizationId()],
     );
     return result.rows;
   }

@@ -86,7 +86,7 @@ struct PumpsOverviewView: View {
     private func filterChip(_ title: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title).font(.caption.weight(.semibold))
-                .foregroundStyle(isSelected ? Color.white : DLCTheme.forest)
+                .foregroundStyle(isSelected ? Color.white : DLCTheme.ink)
                 .padding(.horizontal, 11).padding(.vertical, 8)
                 .background(isSelected ? DLCTheme.forest : DLCTheme.background)
                 .clipShape(Capsule())
@@ -104,12 +104,12 @@ private struct HistoryCutRow: View {
                 Text(cut.date.formatted(.dateTime.day())).font(.title3.weight(.bold))
                 Text(cut.date.formatted(.dateTime.month(.abbreviated)).uppercased()).font(.caption2.weight(.bold))
             }
-            .foregroundStyle(DLCTheme.forest)
+            .foregroundStyle(DLCTheme.ink)
             .frame(width: 46, height: 49)
             .background(DLCTheme.orangeBG)
             .clipShape(RoundedRectangle(cornerRadius: 12))
             VStack(alignment: .leading, spacing: 5) {
-                Text(cut.type.rawValue).font(.headline).foregroundStyle(DLCTheme.forest)
+                Text(cut.type.rawValue).font(.headline).foregroundStyle(DLCTheme.ink)
                 Text(cut.type.schedule).font(.caption).foregroundStyle(DLCTheme.muted)
                 Text("\(cut.completedPumpCount)/6 bombas · \(Int(cut.totalSoldGallons.rounded()).formatted()) gal")
                     .font(.caption.weight(.medium)).foregroundStyle(DLCTheme.muted)
@@ -204,7 +204,7 @@ private struct CutHistoryDetailView: View {
     private func summaryValue(_ title: String, value: String) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             Text(title).font(.caption).foregroundStyle(DLCTheme.muted)
-            Text(value).font(.subheadline.weight(.bold)).foregroundStyle(DLCTheme.forest)
+            Text(value).font(.subheadline.weight(.bold)).foregroundStyle(DLCTheme.ink)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -241,7 +241,7 @@ private struct CutHistoryDetailView: View {
             Text(title).font(.caption2).foregroundStyle(DLCTheme.muted)
             Text("\(gallons, specifier: "%.1f") gal")
                 .font(.caption.weight(emphasized ? .bold : .medium))
-                .foregroundStyle(DLCTheme.forest)
+                .foregroundStyle(DLCTheme.ink)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
@@ -310,7 +310,7 @@ struct RemotePumpsOverviewView: View {
                                     Image(systemName: "fuelpump.fill").font(.title2).foregroundStyle(DLCTheme.orange)
                                     VStack(alignment: .leading, spacing: 4) {
                                         Text("\(dispenser.code) · \(dispenser.name ?? "Dispensador")")
-                                            .font(.headline).foregroundStyle(DLCTheme.forest)
+                                            .font(.headline).foregroundStyle(DLCTheme.ink)
                                         Text("\(dispenser.activeNozzles)/\(dispenser.nozzleCount) mangueras activas · \(dispenser.physicalStatus)")
                                             .font(.caption).foregroundStyle(DLCTheme.muted)
                                     }
@@ -417,7 +417,7 @@ private struct RemoteDispenserDetailView: View {
                                             .frame(maxWidth: .infinity, alignment: .leading)
                                     }
                                     .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(DLCTheme.forest)
+                                    .foregroundStyle(DLCTheme.ink)
                                     .disabled(state.availability?.selectable != true || state.availability?.price == nil)
                                 }
                                 if let availability = state.availability {
@@ -1029,7 +1029,7 @@ struct RemoteDispenseQueueView: View {
                             } label: {
                                 Text(option.rawValue)
                                     .font(.caption.weight(.semibold))
-                                    .foregroundStyle(filter == option ? Color.white : DLCTheme.forest)
+                                    .foregroundStyle(filter == option ? Color.white : DLCTheme.ink)
                                     .padding(.horizontal, 12).padding(.vertical, 9)
                                     .background(filter == option ? DLCTheme.forest : DLCTheme.surface)
                                     .clipShape(Capsule())
@@ -1068,7 +1068,7 @@ struct RemoteDispenseQueueView: View {
                                 VStack(alignment: .leading, spacing: 7) {
                                     HStack {
                                         Text(dispenseStatusLabel(authorization.status))
-                                            .font(.headline).foregroundStyle(DLCTheme.forest)
+                                            .font(.headline).foregroundStyle(DLCTheme.ink)
                                         Spacer()
                                         Text("v\(authorization.version)")
                                             .font(.caption.monospacedDigit()).foregroundStyle(DLCTheme.muted)
@@ -1076,7 +1076,7 @@ struct RemoteDispenseQueueView: View {
                                     Text("\(authorization.dispenserCode ?? "Bomba") · manguera \(authorization.nozzleCode ?? String(authorization.nozzleId.uuidString.prefix(8))) · \(authorization.fuelName ?? "Combustible")")
                                         .font(.caption).foregroundStyle(DLCTheme.muted)
                                     Text("Reserva \(authorization.reservedL) L · avance \(authorization.progressL) L")
-                                        .font(.subheadline.weight(.medium)).foregroundStyle(DLCTheme.forest)
+                                        .font(.subheadline.weight(.medium)).foregroundStyle(DLCTheme.ink)
                                     Text("Precio: $\(authorization.priceUsdPerUnit) / \(authorization.priceUnit) · vence \(authorization.expiresAt?.formatted(date: .abbreviated, time: .shortened) ?? "—")")
                                         .font(.caption).foregroundStyle(DLCTheme.muted)
                                     Label("Abrir ficha y continuar", systemImage: "chevron.right")
@@ -1254,7 +1254,7 @@ private struct RemotePrepaymentCollectionPanel: View {
                 HStack {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(advance.method == "cash" ? "Efectivo" : "Tarjeta")
-                            .font(.subheadline.weight(.semibold)).foregroundStyle(DLCTheme.forest)
+                            .font(.subheadline.weight(.semibold)).foregroundStyle(DLCTheme.ink)
                         Text(prepaymentRefundStatus(advance)).font(.caption).foregroundStyle(prepaymentRefundColor(advance))
                     }
                     Spacer()
@@ -1427,7 +1427,7 @@ struct RemotePrepaymentsView: View {
         List {
             Section {
                 HStack(spacing: 10) {
-                    prepaymentMetric("Anticipos", value: "\(vm.advances.count)", color: DLCTheme.forest)
+                    prepaymentMetric("Anticipos", value: "\(vm.advances.count)", color: DLCTheme.ink)
                     prepaymentMetric("Por revisar", value: "\(vm.advances.filter { $0.requestStatus == "pending" }.count)", color: DLCTheme.orange)
                     prepaymentMetric("Ejecutados", value: "\(vm.advances.filter { $0.refundId != nil }.count)", color: DLCTheme.green)
                 }
@@ -1445,12 +1445,12 @@ struct RemotePrepaymentsView: View {
                         HStack(alignment: .top) {
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(advance.method == "cash" ? "Anticipo en efectivo" : "Anticipo con tarjeta")
-                                    .font(.headline).foregroundStyle(DLCTheme.forest)
+                                    .font(.headline).foregroundStyle(DLCTheme.ink)
                                 Text("\(advance.createdAt.formatted(date: .abbreviated, time: .shortened)) · \(advance.tenderKind == "captured" ? "capturado" : "retención") · \(advance.outcome == "confirmed" ? "confirmado" : advance.outcome == "unknown" ? "por conciliar" : "rechazado")")
                                     .font(.caption).foregroundStyle(advance.outcome == "confirmed" ? DLCTheme.muted : DLCTheme.orange)
                             }
                             Spacer(minLength: 6)
-                            Text("$\(advance.amountUsd)").font(.headline.monospacedDigit()).foregroundStyle(DLCTheme.forest)
+                            Text("$\(advance.amountUsd)").font(.headline.monospacedDigit()).foregroundStyle(DLCTheme.ink)
                         }
                         LabeledContent("Autorización", value: String(advance.authorizationId.uuidString.prefix(8)))
                         LabeledContent("Asignado a venta", value: "$\(advance.allocatedUsd)")
@@ -1491,7 +1491,7 @@ struct RemotePrepaymentsView: View {
                         }
                         if advance.requestStatus == "pending", canDecide, advance.requestedBy != vm.scope.userId {
                             Button("Revisar devolución") { activeSheet = .decide(advance) }
-                                .buttonStyle(.bordered).tint(DLCTheme.forest).disabled(!vm.canStartCommand)
+                                .buttonStyle(.bordered).tint(DLCTheme.ink).disabled(!vm.canStartCommand)
                         } else if advance.requestStatus == "pending", advance.requestedBy == vm.scope.userId {
                             Label("Pendiente de decisión independiente", systemImage: "person.badge.clock").font(.caption).foregroundStyle(DLCTheme.orange)
                         }
@@ -1499,7 +1499,7 @@ struct RemotePrepaymentsView: View {
                            advance.requestedBy == vm.scope.userId, canExecute {
                             if vm.canReadCash && !vm.openSessions.isEmpty {
                                 Button("Ejecutar devolución aprobada") { activeSheet = .execute(advance) }
-                                    .buttonStyle(.borderedProminent).tint(DLCTheme.orange).disabled(!vm.canStartCommand)
+                                    .buttonStyle(.borderedProminent).tint(DLCTheme.orangeFill).disabled(!vm.canStartCommand)
                             } else {
                                 Label("Necesitas una caja abierta propia para registrar la salida.", systemImage: "lock.fill")
                                     .font(.caption).foregroundStyle(DLCTheme.muted)
@@ -1740,7 +1740,7 @@ private struct RemotePrepaymentRefundActionSheet: View {
                         }
                     }
                     .frame(maxWidth: .infinity).buttonStyle(.borderedProminent)
-                    .tint((action == .decide || action == .resolve) && decision == "rejected" ? DLCTheme.red : DLCTheme.forest)
+                    .tint((action == .decide || action == .resolve) && decision == "rejected" ? DLCTheme.redFill : DLCTheme.forest)
                     .disabled(vm.isPosting || !vm.canStartCommand ||
                         ((action == .resolve || action == .confirmRelease) && !(1...200).contains(evidence.trimmingCharacters(in: .whitespacesAndNewlines).count)))
                 }
@@ -1935,7 +1935,7 @@ private struct RemoteSalePaymentsPanel: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Cobro de esta venta").font(.headline).foregroundStyle(DLCTheme.forest)
+                    Text("Cobro de esta venta").font(.headline).foregroundStyle(DLCTheme.ink)
                     Text("Saldo por cobrar: $\(sale.outstandingUsd ?? "—")")
                         .font(.subheadline.monospacedDigit().weight(.semibold)).foregroundStyle(DLCTheme.orange)
                 }
@@ -1980,12 +1980,12 @@ private struct RemoteSalePaymentsPanel: View {
                         HStack(alignment: .top) {
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(attempt.method == "cash" ? "Efectivo" : "Tarjeta")
-                                    .font(.subheadline.weight(.semibold)).foregroundStyle(DLCTheme.forest)
+                                    .font(.subheadline.weight(.semibold)).foregroundStyle(DLCTheme.ink)
                                 Text("\(paymentStatusTitle(attempt.status)) · \(attempt.mode == "simulated" ? "simulado" : "manual") · \(attempt.createdAt.formatted(date: .abbreviated, time: .shortened))")
                                     .font(.caption).foregroundStyle(paymentStatusColor(attempt.status)).fixedSize(horizontal: false, vertical: true)
                             }
                             Spacer(minLength: 8)
-                            Text("$\(attempt.amountUsd)").font(.subheadline.monospacedDigit().weight(.bold)).foregroundStyle(DLCTheme.forest)
+                            Text("$\(attempt.amountUsd)").font(.subheadline.monospacedDigit().weight(.bold)).foregroundStyle(DLCTheme.ink)
                         }
                         if let evidence = attempt.evidenceReference, !evidence.isEmpty {
                             Text("Referencia: \(evidence)").font(.caption2).foregroundStyle(DLCTheme.muted)
@@ -1995,7 +1995,7 @@ private struct RemoteSalePaymentsPanel: View {
                         }
                         if attempt.status == "unknown" && canResolvePayments {
                             Button("Conciliar resultado del terminal") { attemptToResolve = attempt }
-                                .font(.caption.weight(.semibold)).buttonStyle(.bordered).tint(DLCTheme.forest)
+                                .font(.caption.weight(.semibold)).buttonStyle(.bordered).tint(DLCTheme.ink)
                                 .disabled(!vm.canStartCommand)
                         }
                     }
@@ -2028,7 +2028,7 @@ private struct RemoteSalePaymentsPanel: View {
                                 if await vm.retry(draft) { await onPaymentChanged() }
                             }
                         }
-                        .font(.caption.weight(.semibold)).buttonStyle(.bordered).tint(DLCTheme.forest).disabled(vm.isPosting)
+                        .font(.caption.weight(.semibold)).buttonStyle(.bordered).tint(DLCTheme.ink).disabled(vm.isPosting)
                     }
                     .padding(10).background(DLCTheme.yellowBG, in: RoundedRectangle(cornerRadius: 13))
                 }
@@ -2104,7 +2104,7 @@ private struct RemoteSaleRefundPanel: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Control de devoluciones").font(.headline).foregroundStyle(DLCTheme.forest)
+                    Text("Control de devoluciones").font(.headline).foregroundStyle(DLCTheme.ink)
                     Text("Solicitud, revisión independiente y salida de caja")
                         .font(.caption).foregroundStyle(DLCTheme.muted)
                 }
@@ -2120,7 +2120,7 @@ private struct RemoteSaleRefundPanel: View {
                     HStack(alignment: .top) {
                         VStack(alignment: .leading, spacing: 3) {
                             Text("Solicitud por $\(request.amountUsd)")
-                                .font(.subheadline.monospacedDigit().weight(.bold)).foregroundStyle(DLCTheme.forest)
+                                .font(.subheadline.monospacedDigit().weight(.bold)).foregroundStyle(DLCTheme.ink)
                             Text("\(refundRequestStatusTitle(request)) · \(request.method == "cash" ? "efectivo" : "tarjeta")")
                                 .font(.caption.weight(.medium)).foregroundStyle(refundRequestStatusColor(request))
                         }
@@ -2134,7 +2134,7 @@ private struct RemoteSaleRefundPanel: View {
                     }
                     if request.status == "pending" && canDecide && request.requestedBy != vm.scope.userId {
                         Button("Revisar solicitud") { activeSheet = .decide(request) }
-                            .font(.caption.weight(.semibold)).buttonStyle(.bordered).tint(DLCTheme.forest)
+                            .font(.caption.weight(.semibold)).buttonStyle(.bordered).tint(DLCTheme.ink)
                             .disabled(!vm.canStartCommand)
                     }
                     if request.status == "pending" && request.requestedBy == vm.scope.userId {
@@ -2143,7 +2143,7 @@ private struct RemoteSaleRefundPanel: View {
                     if request.status == "approved" && request.refundId == nil && request.requestedBy == vm.scope.userId && canExecute {
                         if canReadCash && !vm.openSessions.isEmpty {
                             Button("Ejecutar devolución aprobada") { activeSheet = .execute(request) }
-                                .font(.caption.weight(.semibold)).buttonStyle(.borderedProminent).tint(DLCTheme.orange)
+                                .font(.caption.weight(.semibold)).buttonStyle(.borderedProminent).tint(DLCTheme.orangeFill)
                                 .disabled(!vm.canStartCommand)
                         } else {
                             Label("Necesitas una caja abierta para ejecutar la devolución.", systemImage: "lock.fill")
@@ -2178,7 +2178,7 @@ private struct RemoteSaleRefundPanel: View {
                     Button("Consultar / reintentar") {
                         Task { if await vm.retry(draft) { await onRefundChanged() } }
                     }
-                    .font(.caption.weight(.semibold)).buttonStyle(.bordered).tint(DLCTheme.forest).disabled(vm.isPosting)
+                    .font(.caption.weight(.semibold)).buttonStyle(.bordered).tint(DLCTheme.ink).disabled(vm.isPosting)
                 }
                 .padding(10).background(DLCTheme.yellowBG, in: RoundedRectangle(cornerRadius: 13))
             }
@@ -2275,7 +2275,7 @@ private struct RemoteRefundDecisionSheet: View {
                         Task { if await vm.decide(request, decision: decision, reason: reason) { await onChanged(); dismiss() } }
                     }
                     .frame(maxWidth: .infinity).buttonStyle(.borderedProminent)
-                    .tint(decision == "approved" ? DLCTheme.forest : DLCTheme.red).disabled(vm.isPosting)
+                    .tint(decision == "approved" ? DLCTheme.forest : DLCTheme.redFill).disabled(vm.isPosting)
                 }
             }
             .navigationTitle("Revisar devolución").navigationBarTitleDisplayMode(.inline)
@@ -2317,7 +2317,7 @@ private struct RemoteRefundExecutionSheet: View {
                     Button("Registrar devolución") {
                         Task { if await vm.executeRefund(request, evidence: evidence) { await onChanged(); dismiss() } }
                     }
-                    .frame(maxWidth: .infinity).buttonStyle(.borderedProminent).tint(DLCTheme.orange).disabled(vm.isPosting || vm.openSessions.isEmpty)
+                    .frame(maxWidth: .infinity).buttonStyle(.borderedProminent).tint(DLCTheme.orangeFill).disabled(vm.isPosting || vm.openSessions.isEmpty)
                 }
             }
             .navigationTitle("Ejecutar devolución").navigationBarTitleDisplayMode(.inline)

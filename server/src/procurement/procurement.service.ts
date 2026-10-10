@@ -111,7 +111,7 @@ export class ProcurementService {
     }
     const result=await this.pool.query(
       `SELECT po.id,po.order_number AS "orderNumber",po.status,po.version,po.requested_delivery_at AS "requestedDeliveryAt",
-              po.created_at AS "createdAt",s.legal_name AS "supplierName",
+              po.created_at AS "createdAt",po.created_by AS "createdBy",s.legal_name AS "supplierName",
               COALESCE(jsonb_agg(jsonb_build_object('id',l.id,'fuelProductId',l.fuel_product_id,'quantityOrdered',l.quantity_ordered,
                 'quantityReceived',l.received_quantity,'unit',l.unit,'agreedUnitPriceUsd',l.agreed_unit_price_usd,'tankId',l.tank_id)
                 ORDER BY l.created_at) FILTER (WHERE l.id IS NOT NULL),'[]'::jsonb) AS lines

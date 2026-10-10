@@ -15,10 +15,6 @@
     "build": "pnpm --filter @dlc/server build",
     "db:migrate": "pnpm --filter @dlc/server db:migrate",
     "db:seed:demo": "pnpm --filter @dlc/server db:seed:demo",
-    "report:verify": "node scripts/verify-plan.mjs",
-    "acceptance:verify": "node scripts/verify-acceptance-matrix.mjs",
-    "release:verify": "node scripts/verify-release.mjs",
-    "package:source": "node scripts/package-release.mjs",
     "backup:encrypted": "node scripts/backup.mjs",
     "restore:check": "node scripts/restore-check.mjs"
   }

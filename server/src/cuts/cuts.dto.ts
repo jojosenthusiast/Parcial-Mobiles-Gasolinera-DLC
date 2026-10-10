@@ -2,8 +2,12 @@ import { IsIn, IsInt, IsISO8601, IsOptional, IsString, IsUUID, Matches, MaxLengt
 
 export class CreateCutProfileDto {
  @IsString() @Matches(/^\d{4}-\d{2}-\d{2}$/) effectiveDate!:string;
- @IsString() @Matches(/^([01]\d|2[0-3]):[0-5]\d$/) dayStart!:string;
- @IsString() @Matches(/^([01]\d|2[0-3]):[0-5]\d$/) splitAt!:string;
+ /** Local start of the first window. Optional only for the academicLab22 template (06:00). */
+ @IsOptional() @IsString() @Matches(/^([01]\d|2[0-3]):[0-5]\d$/) dayStart?:string;
+ /** Local boundary between the two windows. Optional only for the academicLab22 template (14:00). */
+ @IsOptional() @IsString() @Matches(/^([01]\d|2[0-3]):[0-5]\d$/) splitAt?:string;
+ /** Local end of the second window; the period until the next dayStart is NOT a cut. Only academicLab22 (22:00). */
+ @IsOptional() @IsString() @Matches(/^([01]\d|2[0-3]):[0-5]\d$/) dayEnd?:string;
 }
 
 export class GenerateCutsDto {

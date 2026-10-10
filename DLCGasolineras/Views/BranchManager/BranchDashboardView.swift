@@ -61,7 +61,7 @@ struct BranchDashboardView: View {
                                     Spacer()
                                     Image(systemName: "chevron.right")
                                 }
-                                .font(.subheadline.weight(.medium)).foregroundStyle(DLCTheme.forest)
+                                .font(.subheadline.weight(.medium)).foregroundStyle(DLCTheme.ink)
                             }
                             .buttonStyle(.plain)
                         }
@@ -181,6 +181,9 @@ struct BranchDashboardView: View {
         .dlcScreen()
         .navigationBarHidden(true)
         .onAppear { vm.reload() }
+        .sensoryFeedback(.warning, trigger: vm.needsAttention.count) { oldValue, newValue in
+            newValue > oldValue
+        }
     }
 
     private func statusKey(_ status: InventoryStatus) -> some View {

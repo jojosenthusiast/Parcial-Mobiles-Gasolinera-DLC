@@ -14,6 +14,7 @@ export class BranchesService {
   async createDraft(principal: AuthPrincipal, input: CreateBranchDraftDto, correlationId: string) {
     const code = input.code.trim().toUpperCase();
     const name = input.name.trim().replace(/\s+/g, ' ');
+    const countryCode = normalizeCountryCode(input.countryCode);
     const profile = input.profile ?? 'operational';
     const expectedDispenserCount = input.expectedDispenserCount;
     if (!name || !code) throw new BadRequestException('Nombre y código son obligatorios.');
@@ -30,10 +31,10 @@ export class BranchesService {
     try {
       await client.query('BEGIN');
       const inserted = await client.query(
-        `INSERT INTO branches (organization_id,code,name,zone,timezone,onboarding_data)
-         VALUES ($1,$2,$3,$4,$5,jsonb_build_object('identity',jsonb_build_object('code',$2,'name',$3,'zone',$4,'timezone',$5),'template',$6,'expectedDispenserCount',$7))
-         RETURNING id,code,name,zone,timezone,status,onboarding_data AS "onboardingData",onboarding_version AS "onboardingVersion",created_at AS "createdAt",updated_at AS "updatedAt"`,
-        [principal.organizationId, code, name, input.zone, input.timezone, profile, dispenserCount],
+        `INSERT INTO branches (organization_id,code,name,zone,timezone,country_code,onboarding_data)
+         VALUES ($1,$2,$3,$4,$5,$8,jsonb_build_object('identity',jsonb_build_object('code',$2,'name',$3,'zone',$4,'timezone',$5,'countryCode',$8::text),'template',$6,'expectedDispenserCount',$7))
+         RETURNING id,code,name,zone,timezone,country_code AS "countryCode",status,onboarding_data AS "onboardingData",onboarding_version AS "onboardingVersion",created_at AS "createdAt",updated_at AS "updatedAt"`,
+        [principal.organizationId, code, name, input.zone, input.timezone, profile, dispenserCount, countryCode],
       );
       const branch = inserted.rows[0]!;
       await client.query(
@@ -41,7 +42,7 @@ export class BranchesService {
          VALUES($1,$2,$3,$4,$5)`,
         [branch.id, principal.organizationId, profile, dispenserCount, principal.userId],
       );
-      await this.audit.appendTransaction(client, { principal, branchId: branch.id, correlationId, action: 'branch.draft.create', entityType: 'branch', entityId: branch.id, after: { code, zone: input.zone, status: 'draft' } });
+      await this.audit.appendTransaction(client, { principal, branchId: branch.id, correlationId, action: 'branch.draft.create', entityType: 'branch', entityId: branch.id, after: { code, zone: input.zone, countryCode, status: 'draft' } });
       await client.query('COMMIT');
       return branch;
     } catch (error) {
@@ -51,17 +52,18 @@ export class BranchesService {
     } finally { client.release(); }
   }
 
-  async list(principal: AuthPrincipal, options: { query?: string; status?: string; branchId?: string; cursor?: string; limit: number }) {
+  async list(principal: AuthPrincipal, options: { query?: string; status?: string; branchId?: string; countryCode?: string; cursor?: string; limit: number }) {
     const values: unknown[] = [principal.organizationId];
     const where = ['organization_id=$1'];
     if (options.query?.trim()) { values.push(`%${escapeLike(options.query.trim())}%`); where.push(`(name ILIKE $${values.length} ESCAPE '\\' OR code ILIKE $${values.length} ESCAPE '\\' OR zone ILIKE $${values.length} ESCAPE '\\')`); }
     if (options.status) { values.push(options.status); where.push(`status=$${values.length}`); }
     if (options.branchId) { values.push(options.branchId); where.push(`id=$${values.length}::uuid`); }
+    if (options.countryCode) { values.push(normalizeCountryCode(options.countryCode)); where.push(`country_code=$${values.length}`); }
     if (options.cursor) { if (!CURSOR.test(options.cursor)) throw new BadRequestException('cursor debe ser UUID.'); values.push(options.cursor); where.push(`id>$${values.length}::uuid`); }
     const limit = Math.max(1, Math.min(100, options.limit));
     values.push(limit + 1);
     const result = await this.pool.query(
-      `SELECT id,code,name,zone,timezone,status,onboarding_version AS "onboardingVersion",updated_at AS "updatedAt"
+      `SELECT id,code,name,zone,timezone,country_code AS "countryCode",status,onboarding_version AS "onboardingVersion",updated_at AS "updatedAt"
          FROM branches WHERE ${where.join(' AND ')} ORDER BY id LIMIT $${values.length}`, values,
     );
     const hasMore = result.rows.length > limit;
@@ -71,7 +73,7 @@ export class BranchesService {
 
   async detail(branchId: string, principal: AuthPrincipal) {
     const result = await this.pool.query(
-      `SELECT id,code,name,zone,timezone,status,onboarding_data AS "onboardingData",
+      `SELECT id,code,name,zone,timezone,country_code AS "countryCode",status,onboarding_data AS "onboardingData",
               onboarding_version AS "onboardingVersion",configured_at AS "configuredAt",
               activated_at AS "activatedAt",created_at AS "createdAt",updated_at AS "updatedAt"
          FROM branches WHERE id=$1 AND organization_id=$2`, [branchId, principal.organizationId],
@@ -95,8 +97,8 @@ export class BranchesService {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
-      const current = await client.query<{ onboarding_version: number; status: string; onboarding_data: Record<string, unknown>; code: string; name: string; zone: string; timezone: string }>(
-        'SELECT onboarding_version,status,onboarding_data,code,name,zone,timezone FROM branches WHERE id=$1 AND organization_id=$2 FOR UPDATE', [branchId, principal.organizationId],
+      const current = await client.query<{ onboarding_version: number; status: string; onboarding_data: Record<string, unknown>; code: string; name: string; zone: string; timezone: string; country_code: string }>(
+        'SELECT onboarding_version,status,onboarding_data,code,name,zone,timezone,country_code FROM branches WHERE id=$1 AND organization_id=$2 FOR UPDATE', [branchId, principal.organizationId],
       );
       const row = current.rows[0];
       if (!row) throw new NotFoundException('La sucursal no existe.');
@@ -106,10 +108,11 @@ export class BranchesService {
       let name = row.name;
       let zone = row.zone;
       let timezone = row.timezone;
+      let countryCode = row.country_code;
       let dataToSave: Record<string, unknown> = input.data;
       if (input.step === 'identity') {
-        const allowed = new Set(['code','name','zone','timezone']);
-        if (Object.keys(input.data).some(field => !allowed.has(field))) throw new BadRequestException('El paso identidad solo admite código, nombre, zona y zona horaria.');
+        const allowed = new Set(['code','name','zone','timezone','countryCode']);
+        if (Object.keys(input.data).some(field => !allowed.has(field))) throw new BadRequestException('El paso identidad solo admite código, nombre, zona, país y zona horaria.');
         if (input.data.code !== undefined) {
           code = requiredString(input.data.code, 'code', 24).toUpperCase();
           if (!/^[A-Z0-9][A-Z0-9_-]*$/.test(code)) throw new BadRequestException('code contiene caracteres no permitidos.');
@@ -124,15 +127,16 @@ export class BranchesService {
           try { new Intl.DateTimeFormat('en-US', { timeZone: timezone }); }
           catch { throw new BadRequestException('La zona horaria debe ser un identificador IANA válido.'); }
         }
-        dataToSave = { ...input.data, code, name, zone, timezone };
+        if (input.data.countryCode !== undefined) countryCode = normalizeCountryCode(requiredString(input.data.countryCode, 'countryCode', 2));
+        dataToSave = { ...input.data, code, name, zone, timezone, countryCode };
       }
       const updated = await client.query(
-        `UPDATE branches SET code=$6,name=$7,zone=$8,timezone=$9,
-           onboarding_data=onboarding_data || jsonb_build_object($3,$4::jsonb),
+        `UPDATE branches SET code=$6,name=$7,zone=$8,timezone=$9,country_code=$10,
+           onboarding_data=onboarding_data || jsonb_build_object($3::text,$4::jsonb),
            onboarding_version=onboarding_version+1,updated_at=now()
          WHERE id=$1 AND organization_id=$2 AND onboarding_version=$5
          RETURNING id,status,onboarding_data AS "onboardingData",onboarding_version AS "onboardingVersion",updated_at AS "updatedAt"`,
-        [branchId, principal.organizationId, input.step, JSON.stringify(dataToSave), input.expectedVersion, code, name, zone, timezone],
+        [branchId, principal.organizationId, input.step, JSON.stringify(dataToSave), input.expectedVersion, code, name, zone, timezone, countryCode],
       );
       if (!updated.rowCount) throw new ConflictException('El borrador cambió; vuelve a cargarlo.');
       await this.audit.appendTransaction(client, { principal, branchId, correlationId, action: 'branch.onboarding.step.save', entityType: 'branch', entityId: branchId, before: { step: input.step, version: row.onboarding_version }, after: { step: input.step, version: updated.rows[0]!.onboardingVersion, fields: Object.keys(input.data) } });
@@ -281,6 +285,13 @@ function validateStepData(data: Record<string, unknown>): void {
   visit(data, 0);
 }
 
+const DEFAULT_COUNTRY_CODE = 'SV';
+function normalizeCountryCode(value: unknown): string {
+  if (value === undefined || value === null) return DEFAULT_COUNTRY_CODE;
+  const code = typeof value === 'string' ? value.trim().toUpperCase() : '';
+  if (!/^[A-Z]{2}$/.test(code)) throw new BadRequestException(`countryCode debe ser un código de país ISO 3166-1 alpha-2 de dos letras.`);
+  return code;
+}
 function escapeLike(value: string): string { return value.replace(/[\\%_]/g, '\\$&'); }
 function isUnique(error: unknown): boolean { return Boolean(error && typeof error === 'object' && 'code' in error && error.code === '23505'); }
 function requiredString(value: unknown, field: string, max: number): string {

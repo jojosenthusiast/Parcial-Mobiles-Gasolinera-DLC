@@ -1,4 +1,7 @@
 import 'package:dlc_api/dlc_api.dart';
+import 'live_form.dart';
+import 'validators.dart';
+import 'app_theme.dart';
 import 'package:flutter/material.dart';
 
 /// Configuración conectada a la API para combustibles e infraestructura física.
@@ -292,7 +295,7 @@ class _InfrastructureSetupScreenState extends State<InfrastructureSetupScreen> {
                 children: [
                   if (error != null)
                     Card(
-                      color: const Color(0xffffeae5),
+                      color: context.dlc.criticalContainer,
                       child: ListTile(
                         leading: const Icon(Icons.error_outline),
                         title: Text(error!),
@@ -305,8 +308,8 @@ class _InfrastructureSetupScreenState extends State<InfrastructureSetupScreen> {
                             ? Icons.check_circle
                             : Icons.pending_actions,
                         color: readiness['ready'] == true
-                            ? Colors.green
-                            : Colors.deepOrange,
+                            ? context.dlc.optimal
+                            : context.dlc.warning,
                       ),
                       title: Text(
                         readiness['ready'] == true
@@ -443,9 +446,9 @@ class _InfrastructureSetupScreenState extends State<InfrastructureSetupScreen> {
                           }).toList(),
                   ),
                   const SizedBox(height: 18),
-                  const Text(
+                  Text(
                     'Los cambios se guardan en el servidor con auditoría. Revisa la configuración y los permisos del usuario antes de activar una sucursal.',
-                    style: TextStyle(color: Colors.black54),
+                    style: TextStyle(color: context.dlc.muted),
                   ),
                 ],
               ),
@@ -534,6 +537,9 @@ Future<Map<String, String>?> _form(
       : _str(productOptions.first['id']);
   String serviceMode = 'full_service', meterUnit = 'liter', precision = '3';
   String? tankId;
+  String? fieldError(_Field field, String? value) => field.required
+      ? requiredText(value, field: field.label)
+      : maxLengthText(value, 200, field: field.label);
   final result = await showDialog<Map<String, String>>(
     context: context,
     builder: (context) => StatefulBuilder(
@@ -546,12 +552,11 @@ Future<Map<String, String>?> _form(
               ...fields.map(
                 (field) => Padding(
                   padding: const EdgeInsets.only(bottom: 10),
-                  child: TextField(
-                    controller: controllers[field.key],
-                    decoration: InputDecoration(
-                      labelText: field.label,
-                      border: const OutlineInputBorder(),
-                    ),
+                  child: LiveTextField(
+                    controller: controllers[field.key]!,
+                    label: field.required ? '${field.label} *' : field.label,
+                    validator: (v) => fieldError(field, v),
+                    onChanged: () => setState(() {}),
                   ),
                 ),
               ),
@@ -659,12 +664,11 @@ Future<Map<String, String>?> _form(
             child: const Text('Cancelar'),
           ),
           FilledButton(
-            onPressed: () {
-              for (final field in fields) {
-                if (field.required &&
-                    (controllers[field.key]?.text.trim().isEmpty ?? true))
-                  return;
-              }
+            onPressed: !fields.every(
+              (f) => fieldError(f, controllers[f.key]?.text) == null,
+            )
+                ? null
+                : () {
               Navigator.pop(context, {
                 for (final entry in controllers.entries)
                   entry.key: entry.value.text.trim(),
@@ -695,19 +699,21 @@ Future<String?> _text(
   final controller = TextEditingController(text: initial);
   final value = await showDialog<String>(
     context: context,
-    builder: (context) => AlertDialog(
-      title: Text(title),
-      content: TextField(controller: controller, minLines: 2, maxLines: 4),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancelar'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.pop(context, controller.text.trim()),
-          child: const Text('Guardar'),
-        ),
-      ],
+    builder: (context) => ValidatedFormDialog(
+      title: title,
+      submitLabel: 'Guardar',
+      cancelLabel: 'Cancelar',
+      onCancel: () => Navigator.pop(context),
+      onSubmit: () => Navigator.pop(context, controller.text.trim()),
+      isValid: () => minLengthText(controller.text, 3, field: 'El texto') == null,
+      contentBuilder: (context, changed) => LiveTextField(
+        controller: controller,
+        label: 'Detalle',
+        minLines: 2,
+        maxLines: 4,
+        validator: (v) => minLengthText(v, 3, field: 'El texto'),
+        onChanged: changed,
+      ),
     ),
   );
   controller.dispose();

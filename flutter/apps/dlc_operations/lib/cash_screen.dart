@@ -1,4 +1,8 @@
 import 'point_refunds_screen.dart';
+import 'haptics.dart';
+import 'live_form.dart';
+import 'validators.dart';
+import 'app_theme.dart';
 import 'customer_qr_scanner_screen.dart';
 import 'package:dlc_api/dlc_api.dart';
 import 'package:flutter/material.dart';
@@ -72,23 +76,20 @@ class _CashScreenState extends State<CashScreen> {
     final c = TextEditingController(text: '0');
     final amount = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Abrir caja ${_str(register['code'])}'),
-        content: TextField(
+      builder: (ctx) => ValidatedFormDialog(
+        title: 'Abrir caja ${_str(register['code'])}',
+        submitLabel: 'Abrir turno',
+        cancelLabel: 'Volver',
+        onCancel: () => Navigator.pop(ctx),
+        onSubmit: () => Navigator.pop(ctx, c.text.trim()),
+        isValid: () => _moneyError(c.text, 'El fondo inicial', allowZero: true) == null,
+        contentBuilder: (ctx, changed) => LiveTextField(
           controller: c,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(labelText: 'Fondo inicial USD'),
+          keyboardType: LiveTextField.decimal(),
+          label: 'Fondo inicial USD',
+          validator: (v) => _moneyError(v, 'El fondo inicial', allowZero: true),
+          onChanged: changed,
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Volver'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, c.text.trim()),
-            child: const Text('Abrir turno'),
-          ),
-        ],
       ),
     );
     c.dispose();
@@ -124,8 +125,10 @@ class _CashScreenState extends State<CashScreen> {
     setState(() => _loading = true);
     try {
       await fn();
+      Haptics.success();
       await _load();
     } on DlcApiException catch (e) {
+      Haptics.error();
       if (mounted) setState(() => _error = e.message);
       await _load();
     }
@@ -174,7 +177,7 @@ class _CashScreenState extends State<CashScreen> {
               children: [
                 if (_error != null)
                   Card(
-                    color: const Color(0xffffeae5),
+                    color: context.dlc.criticalContainer,
                     child: ListTile(
                       leading: const Icon(Icons.error_outline),
                       title: Text(_error!),
@@ -193,7 +196,7 @@ class _CashScreenState extends State<CashScreen> {
                         open
                             ? Icons.point_of_sale
                             : Icons.point_of_sale_outlined,
-                        color: open ? Colors.green : Colors.grey,
+                        color: open ? context.dlc.optimal : context.dlc.muted,
                       ),
                       title: Text(
                         'Caja ${_str(r['code'])}',
@@ -272,9 +275,21 @@ class _CashSessionPageState extends State<_CashSessionPage> {
     final value = await showDialog<(String, String, String)>(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setState) => AlertDialog(
-          title: const Text('Movimiento de caja'),
-          content: Column(
+        builder: (ctx, setState) => ValidatedFormDialog(
+          title: 'Movimiento de caja',
+          submitLabel: 'Registrar',
+          cancelLabel: 'Volver',
+          onCancel: () => Navigator.pop(ctx),
+          onSubmit: () => Navigator.pop(ctx, (
+            kind,
+            amount.text.trim(),
+            reason.text.trim(),
+          )),
+          isValid: () => allValid([
+            _moneyError(amount.text, 'El monto'),
+            minLengthText(reason.text, 5, field: 'El motivo'),
+          ]),
+          contentBuilder: (ctx, changed) => Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               DropdownButtonFormField<String>(
@@ -291,35 +306,28 @@ class _CashSessionPageState extends State<_CashSessionPage> {
                     child: Text('Depósito bancario'),
                   ),
                 ],
-                onChanged: (v) => setState(() => kind = v ?? kind),
+                onChanged: (v) {
+                  Haptics.selection();
+                  setState(() => kind = v ?? kind);
+                  changed();
+                },
               ),
-              TextField(
+              LiveTextField(
                 controller: amount,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                decoration: const InputDecoration(labelText: 'Monto USD'),
+                keyboardType: LiveTextField.decimal(),
+                label: 'Monto USD',
+                validator: (v) => _moneyError(v, 'El monto'),
+                onChanged: changed,
               ),
-              TextField(
+              LiveTextField(
                 controller: reason,
-                decoration: const InputDecoration(labelText: 'Motivo'),
+                label: 'Motivo',
+                maxLength: 200,
+                validator: (v) => minLengthText(v, 5, field: 'El motivo'),
+                onChanged: changed,
               ),
             ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Volver'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, (
-                kind,
-                amount.text.trim(),
-                reason.text.trim(),
-              )),
-              child: const Text('Registrar'),
-            ),
-          ],
         ),
       ),
     );
@@ -338,61 +346,56 @@ class _CashSessionPageState extends State<_CashSessionPage> {
   }
 
   Future<void> _close() async {
+    final expectedCash = parseDecimal(_str(_session['expectedCashUsd']));
     final cash = TextEditingController(),
         card = TextEditingController(),
         reason = TextEditingController();
     final value = await showDialog<(String, String, String)>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Cerrar y cuadrar caja'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Efectivo esperado: USD ${_str(_session['expectedCashUsd'])}',
-              ),
-              TextField(
-                controller: cash,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                decoration: const InputDecoration(
-                  labelText: 'Efectivo contado USD',
-                ),
-              ),
-              TextField(
-                controller: card,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                decoration: const InputDecoration(
-                  labelText: 'Tarjeta liquidada USD',
-                ),
-              ),
-              TextField(
-                controller: reason,
-                decoration: const InputDecoration(
-                  labelText: 'Nota de diferencias (si aplica)',
-                ),
-              ),
-            ],
-          ),
+      builder: (ctx) => ValidatedFormDialog(
+        title: 'Cerrar y cuadrar caja',
+        submitLabel: 'Cerrar turno',
+        cancelLabel: 'Volver',
+        onCancel: () => Navigator.pop(ctx),
+        onSubmit: () => Navigator.pop(ctx, (
+          cash.text.trim(),
+          card.text.trim(),
+          reason.text.trim(),
+        )),
+        isValid: () => allValid([
+          _moneyError(cash.text, 'El efectivo contado', allowZero: true),
+          _moneyError(card.text, 'La tarjeta liquidada', allowZero: true),
+          _differenceNote(reason.text, cash.text, expectedCash),
+        ]),
+        contentBuilder: (ctx, changed) => Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Efectivo esperado: USD ${_str(_session['expectedCashUsd'])}'),
+            LiveTextField(
+              controller: cash,
+              keyboardType: LiveTextField.decimal(),
+              label: 'Efectivo contado USD',
+              validator: (v) =>
+                  _moneyError(v, 'El efectivo contado', allowZero: true),
+              onChanged: changed,
+            ),
+            LiveTextField(
+              controller: card,
+              keyboardType: LiveTextField.decimal(),
+              label: 'Tarjeta liquidada USD',
+              validator: (v) =>
+                  _moneyError(v, 'La tarjeta liquidada', allowZero: true),
+              onChanged: changed,
+            ),
+            LiveTextField(
+              controller: reason,
+              label: 'Nota de diferencias (obligatoria si hay diferencia)',
+              maxLength: 300,
+              validator: (v) => _differenceNote(v, cash.text, expectedCash),
+              onChanged: changed,
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Volver'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, (
-              cash.text.trim(),
-              card.text.trim(),
-              reason.text.trim(),
-            )),
-            child: const Text('Cerrar turno'),
-          ),
-        ],
       ),
     );
     cash.dispose();
@@ -415,8 +418,10 @@ class _CashSessionPageState extends State<_CashSessionPage> {
     setState(() => _loading = true);
     try {
       await fn();
+      Haptics.success();
       await _load();
     } on DlcApiException catch (e) {
+      Haptics.error();
       if (mounted) setState(() => _error = e.message);
       await _load();
     }
@@ -434,7 +439,7 @@ class _CashSessionPageState extends State<_CashSessionPage> {
               children: [
                 if (_error != null)
                   Card(
-                    color: const Color(0xffffeae5),
+                    color: context.dlc.criticalContainer,
                     child: ListTile(title: Text(_error!)),
                   ),
                 Card(
@@ -864,9 +869,23 @@ class _PosCheckoutScreenState extends State<_PosCheckoutScreen> {
     final choice = await showDialog<(String, String, String, String)?>(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialog) => AlertDialog(
-          title: const Text('Registrar cobro'),
-          content: SingleChildScrollView(
+        builder: (ctx, setDialog) => ValidatedFormDialog(
+          title: 'Registrar cobro',
+          submitLabel: 'Registrar',
+          cancelLabel: 'Volver',
+          onCancel: () => Navigator.pop(ctx),
+          onSubmit: () => Navigator.pop(ctx, (
+            method,
+            method == 'cash' ? 'confirmed' : outcome,
+            amount.text.trim(),
+            evidence.text.trim(),
+          )),
+          isValid: () => allValid([
+            _moneyError(amount.text, 'El monto recibido'),
+            if (method == 'card' && outcome != 'unknown')
+              minLengthText(evidence.text, 3, field: 'La referencia'),
+          ]),
+          contentBuilder: (ctx, changed) => SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -880,16 +899,18 @@ class _PosCheckoutScreenState extends State<_PosCheckoutScreen> {
                       child: Text('Tarjeta · terminal manual'),
                     ),
                   ],
-                  onChanged: (v) => setDialog(() => method = v ?? method),
+                  onChanged: (v) {
+                    Haptics.selection();
+                    setDialog(() => method = v ?? method);
+                    changed();
+                  },
                 ),
-                TextField(
+                LiveTextField(
                   controller: amount,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  decoration: const InputDecoration(
-                    labelText: 'Monto recibido USD',
-                  ),
+                  keyboardType: LiveTextField.decimal(),
+                  label: 'Monto recibido USD',
+                  validator: (v) => _moneyError(v, 'El monto recibido'),
+                  onChanged: changed,
                 ),
                 if (method == 'card') ...[
                   DropdownButtonFormField<String>(
@@ -911,40 +932,31 @@ class _PosCheckoutScreenState extends State<_PosCheckoutScreen> {
                         child: Text('Resultado incierto'),
                       ),
                     ],
-                    onChanged: (v) => setDialog(() => outcome = v ?? outcome),
+                    onChanged: (v) {
+                      Haptics.selection();
+                      setDialog(() => outcome = v ?? outcome);
+                      changed();
+                    },
                   ),
-                  TextField(
+                  LiveTextField(
                     controller: evidence,
-                    decoration: InputDecoration(
-                      labelText: outcome == 'unknown'
-                          ? 'Referencia (si se conoce)'
-                          : 'Referencia del terminal',
-                    ),
+                    label: outcome == 'unknown'
+                        ? 'Referencia (si se conoce)'
+                        : 'Referencia del terminal',
+                    validator: (v) => outcome == 'unknown'
+                        ? null
+                        : minLengthText(v, 3, field: 'La referencia'),
+                    onChanged: changed,
                   ),
                 ],
                 const SizedBox(height: 8),
-                const Text(
+                Text(
                   'La app registra el resultado informado por el cajero. No procesa tarjetas ni se conecta al terminal.',
-                  style: TextStyle(fontSize: 12, color: Colors.black54),
+                  style: TextStyle(fontSize: 12, color: context.dlc.muted),
                 ),
               ],
             ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Volver'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, (
-                method,
-                method == 'cash' ? 'confirmed' : outcome,
-                amount.text.trim(),
-                evidence.text.trim(),
-              )),
-              child: const Text('Registrar'),
-            ),
-          ],
         ),
       ),
     );
@@ -1121,7 +1133,7 @@ class _PosCheckoutScreenState extends State<_PosCheckoutScreen> {
               children: [
                 if (_error != null)
                   Card(
-                    color: const Color(0xffffeae5),
+                    color: context.dlc.criticalContainer,
                     child: ListTile(
                       leading: const Icon(Icons.error_outline),
                       title: Text(_error!),
@@ -1129,11 +1141,11 @@ class _PosCheckoutScreenState extends State<_PosCheckoutScreen> {
                   ),
                 if (_notice != null)
                   Card(
-                    color: const Color(0xffe6f3e8),
+                    color: context.dlc.optimalContainer,
                     child: ListTile(
-                      leading: const Icon(
+                      leading: Icon(
                         Icons.check_circle_outline,
-                        color: Colors.green,
+                        color: context.dlc.optimal,
                       ),
                       title: Text(_notice!),
                     ),
@@ -1259,10 +1271,10 @@ class _PosCheckoutScreenState extends State<_PosCheckoutScreen> {
                       ),
                   ],
                   if (_customerLinked) ...[
-                    const ListTile(
+                    ListTile(
                       leading: Icon(
                         Icons.verified_user_outlined,
-                        color: Colors.green,
+                        color: context.dlc.optimal,
                       ),
                       title: Text('Cliente vinculado a esta venta'),
                     ),
@@ -1287,7 +1299,7 @@ class _PosCheckoutScreenState extends State<_PosCheckoutScreen> {
                   ],
                   if (_tenderStatusUnknown)
                     Card(
-                      color: const Color(0xfffff2db),
+                      color: context.dlc.mediumContainer,
                       child: ListTile(
                         leading: const Icon(Icons.sync_problem),
                         title: const Text(
@@ -1328,7 +1340,7 @@ class _PosCheckoutScreenState extends State<_PosCheckoutScreen> {
                     ),
                   if (_pendingAttempt != null && !_resolutionSending)
                     Card(
-                      color: const Color(0xfffff2db),
+                      color: context.dlc.mediumContainer,
                       child: ListTile(
                         leading: const Icon(Icons.help_outline),
                         title: const Text('Cobro con resultado incierto'),
@@ -1350,11 +1362,11 @@ class _PosCheckoutScreenState extends State<_PosCheckoutScreen> {
                       label: const Text('Registrar cobro'),
                     ),
                   if (_busy) const Center(child: CircularProgressIndicator()),
-                  const Padding(
+                  Padding(
                     padding: EdgeInsets.only(top: 12),
                     child: Text(
                       'Si se pierde la conexión al crear la venta o registrar el cobro, vuelve a enviar el mismo comando guardado. El identificador persistido evita duplicarlo.',
-                      style: TextStyle(fontSize: 12, color: Colors.black54),
+                      style: TextStyle(fontSize: 12, color: context.dlc.muted),
                     ),
                   ),
                 ],
@@ -1372,3 +1384,17 @@ Widget _cardTitle(String title) => Padding(
   ),
 );
 String _str(dynamic v) => v?.toString() ?? '';
+
+/// Money amounts in USD: positive (or zero when allowed), two decimals.
+String? _moneyError(String? v, String field, {bool allowZero = false}) =>
+    positiveNumber(v, field: field, allowZero: allowZero, maxDecimals: 2);
+
+/// A counted-cash difference against the expected amount needs a written note.
+String? _differenceNote(String? note, String? counted, double? expected) {
+  final n = parseDecimal(counted);
+  if (n == null || expected == null) return null;
+  return lossExplanation(
+    note,
+    lossAmount: (expected - n).abs() >= 0.005 ? (expected - n).abs() : 0,
+  );
+}

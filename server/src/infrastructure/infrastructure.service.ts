@@ -871,7 +871,7 @@ export class InfrastructureService {
 
   async branchConfiguration(branchId: string, principal: AuthPrincipal) {
     const branchResult = await this.pool.query(
-      `SELECT b.id,b.code,b.name,b.zone,b.timezone,b.status,
+      `SELECT b.id,b.code,b.name,b.zone,b.timezone,b.country_code AS "countryCode",b.status,
           COALESCE(p.profile,'operational') AS profile,
           p.expected_dispenser_count AS "expectedDispenserCount",
           COALESCE(p.configuration_version,0) AS "configurationVersion",
@@ -881,7 +881,7 @@ export class InfrastructureService {
     );
     if (!branchResult.rowCount) throw new NotFoundException('La sucursal no existe.');
     const [products, tanks, dispensers, openBlocks] = await Promise.all([
-      this.pool.query(`SELECT p.id,p.sku,p.display_name AS "displayName",p.family,p.brand,o.status FROM branch_fuel_offers o JOIN fuel_products p ON p.id=o.fuel_product_id AND p.organization_id=o.organization_id WHERE o.branch_id=$1 AND o.organization_id=$2 ORDER BY p.display_name`, [branchId, principal.organizationId]),
+      this.pool.query(`SELECT p.id,p.id AS "fuelProductId",p.sku,p.display_name AS "displayName",p.display_name AS "fuelName",p.family,p.brand,o.status FROM branch_fuel_offers o JOIN fuel_products p ON p.id=o.fuel_product_id AND p.organization_id=o.organization_id WHERE o.branch_id=$1 AND o.organization_id=$2 ORDER BY p.display_name`, [branchId, principal.organizationId]),
       this.pool.query(`SELECT t.id,t.code,t.name,t.fuel_product_id AS "fuelProductId",p.display_name AS "fuelName",t.nominal_capacity_l AS "nominalCapacityL",t.safe_fill_limit_l AS "safeFillLimitL",t.unusable_reserve_l AS "unusableReserveL",t.status,t.version FROM tanks t JOIN fuel_products p ON p.id=t.fuel_product_id WHERE t.branch_id=$1 AND t.organization_id=$2 ORDER BY t.code`, [branchId, principal.organizationId]),
       this.pool.query(`SELECT d.id,d.code,d.name,d.physical_status AS "physicalStatus",d.version,COALESCE(jsonb_agg(jsonb_build_object('id',n.id,'code',n.code,'productCode',n.product_code,'fuelProductId',n.fuel_product_id,'serviceMode',n.service_mode,'physicalStatus',n.physical_status,'tankId',c.tank_id,'tankStatus',t.status)) FILTER (WHERE n.id IS NOT NULL),'[]'::jsonb) AS nozzles FROM dispensers d LEFT JOIN nozzles n ON n.dispenser_id=d.id AND n.physical_status<>'removed' LEFT JOIN nozzle_tank_connections c ON c.nozzle_id=n.id AND c.valid_until IS NULL LEFT JOIN tanks t ON t.id=c.tank_id WHERE d.branch_id=$1 AND d.organization_id=$2 GROUP BY d.id ORDER BY d.code`, [branchId, principal.organizationId]),
       this.pool.query('SELECT count(*)::int AS count FROM asset_blocks WHERE branch_id=$1 AND organization_id=$2 AND resolved_at IS NULL', [branchId, principal.organizationId]),

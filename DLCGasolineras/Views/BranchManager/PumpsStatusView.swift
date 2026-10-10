@@ -65,11 +65,11 @@ private struct PumpStatusRow: View {
         HStack(spacing: 13) {
             ZStack {
                 RoundedRectangle(cornerRadius: 12).fill(complete ? DLCTheme.greenBG : DLCTheme.background)
-                Text("\(number)").font(.headline).foregroundStyle(complete ? DLCTheme.green : DLCTheme.forest)
+                Text("\(number)").font(.headline).foregroundStyle(complete ? DLCTheme.green : DLCTheme.ink)
             }
             .frame(width: 44, height: 44)
             VStack(alignment: .leading, spacing: 5) {
-                Text("Bomba \(number)").font(.headline).foregroundStyle(DLCTheme.forest)
+                Text("Bomba \(number)").font(.headline).foregroundStyle(DLCTheme.ink)
                 if let reading {
                     VStack(alignment: .leading, spacing: 4) {
                         ForEach(FuelType.allCases) { fuel in

@@ -7,6 +7,7 @@ import 'package:share_plus/share_plus.dart';
 import 'infrastructure_setup_screen.dart';
 import 'staff_shifts_screen.dart';
 import 'branch_onboarding_screen.dart';
+import 'branch_status.dart';
 import 'maintenance_screen.dart';
 import 'operational_assets_screen.dart';
 import 'procurement_screen.dart';
@@ -14,6 +15,16 @@ import 'cash_screen.dart';
 import 'promotions_screen.dart';
 import 'loyalty_programs_screen.dart';
 import 'dispense_screen.dart';
+import 'app_theme.dart';
+import 'theme_mode_controller.dart';
+import 'country_catalog.dart';
+import 'cut_window.dart';
+import 'haptics.dart';
+import 'network_dashboard_page.dart';
+import 'charts.dart';
+import 'live_form.dart';
+import 'validators.dart';
+import 'tank_levels.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -37,12 +48,29 @@ void main() {
     );
     return false;
   };
-  runApp(OperationsApp(controller: OperationsController(EmployeeSession())));
+  final session = EmployeeSession();
+  runApp(
+    OperationsApp(
+      controller: OperationsController(
+        session,
+        themeController: ThemeModeController(
+          store: CallbackThemePreferenceStore(
+            reader: () => session.readPreference('themeMode'),
+            writer: (value) => session.writePreference('themeMode', value),
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 class OperationsController extends ChangeNotifier {
-  OperationsController(this.api);
+  OperationsController(this.api, {ThemeModeController? themeController})
+    : themeController = themeController ?? ThemeModeController() {
+    api.onSessionExpired = _handleSessionExpired;
+  }
   final EmployeeSession api;
+  final ThemeModeController themeController;
   EmployeeIdentity? identity;
   List<BranchSummary> branches = const [];
   BranchSummary? branch;
@@ -51,7 +79,28 @@ class OperationsController extends ChangeNotifier {
   Set<String> permissions = const {};
   Set<String> globalPermissions = const {};
   bool busy = true, loadingBranch = false;
+
+  /// True when the server rejected the selected branch with the 404
+  /// "Sucursal fuera de tu ámbito." (not active yet, or out of scope).
+  bool branchUnavailable = false;
   String? error;
+
+  /// Code / HTTP / Ref of the last genuine error, shown collapsed.
+  String? errorDetails;
+
+  List<BranchSummary> get activeBranchList => activeBranches(branches);
+
+  bool get canManageBranches => globalPermissions.contains('branch.manage');
+
+  /// The selected branch cannot show its operation (not active, or the server
+  /// refused it as out of scope).
+  bool get branchNotReady =>
+      branch != null && (!branch!.isActive || branchUnavailable);
+
+  void _setError(DlcApiException e) {
+    error = e.message;
+    errorDetails = technicalDetails(e);
+  }
 
   Future<void> start() async {
     try {
@@ -61,7 +110,7 @@ class OperationsController extends ChangeNotifier {
         await _selectAssignedBranch();
       }
     } on DlcApiException catch (e) {
-      error = e.message;
+      _setError(e);
     } finally {
       busy = false;
       notifyListeners();
@@ -78,7 +127,7 @@ class OperationsController extends ChangeNotifier {
       await _loadBranches();
       await _selectAssignedBranch();
     } on DlcApiException catch (e) {
-      error = e.message;
+      _setError(e);
       identity = null;
       await api.clear();
     } finally {
@@ -88,12 +137,28 @@ class OperationsController extends ChangeNotifier {
   }
 
   Future<void> _loadBranches() async {
-    final values = await Future.wait<dynamic>([
-      api.branches(),
-      api.capabilities(),
-    ]);
-    branches = values[0] as List<BranchSummary>;
-    globalPermissions = (values[1] as List<String>).toSet();
+    // GET /branches is only authorized for org-wide role assignments. Branch
+    // scoped users load just the branches they are assigned to.
+    globalPermissions = (await api.capabilities()).toSet();
+    if (globalPermissions.contains('branch.read')) {
+      // Every status is requested so draft/configured branches are known and
+      // can be explained instead of failing on branch-scoped endpoints.
+      branches = await api.branches(status: '');
+    } else {
+      final assigned = (identity?.roles ?? const <EmployeeRole>[])
+          .map((r) => r.branchId)
+          .whereType<String>()
+          .toSet();
+      final loaded = <BranchSummary>[];
+      for (final id in assigned) {
+        try {
+          loaded.add(BranchSummary.fromJson(await api.branchDetail(id)));
+        } on DlcApiException catch (e) {
+          if (e.statusCode != 403 && e.statusCode != 404) rethrow;
+        }
+      }
+      branches = loaded;
+    }
     if (branch != null && !branches.any((b) => b.id == branch!.id))
       branch = null;
   }
@@ -103,14 +168,17 @@ class OperationsController extends ChangeNotifier {
         .map((r) => r.branchId)
         .whereType<String>()
         .toSet();
-    final preferred = assigned.length == 1
-        ? assigned.first
-        : branches.length == 1
-        ? branches.first.id
-        : null;
-    if (preferred == null) return;
-    final allowed = branches.where((b) => b.id == preferred).firstOrNull;
-    if (allowed != null) await selectBranch(allowed);
+    // Prefer an ACTIVE branch. With none active, org-wide users stay on the
+    // branch list (onboarding entry points); branch-scoped users get the
+    // explanation for their only branch.
+    var preferred = pickDefaultBranch(branches, assignedIds: assigned);
+    if (preferred == null &&
+        activeBranchList.isEmpty &&
+        branches.length == 1 &&
+        !globalPermissions.contains('branch.read')) {
+      preferred = branches.first;
+    }
+    if (preferred != null) await selectBranch(preferred);
   }
 
   bool can(String permission) => permissions.contains(permission);
@@ -123,10 +191,18 @@ class OperationsController extends ChangeNotifier {
       return;
     }
     branch = selected;
-    loadingBranch = true;
+    branchUnavailable = false;
     error = null;
+    errorDetails = null;
     dashboard = const {};
     pumps = const [];
+    if (!selected.isActive) {
+      // Draft / configured / suspended: never call branch-scoped endpoints.
+      permissions = globalPermissions;
+      notifyListeners();
+      return;
+    }
+    loadingBranch = true;
     notifyListeners();
     try {
       final responses = await Future.wait<dynamic>([
@@ -138,23 +214,68 @@ class OperationsController extends ChangeNotifier {
       pumps = responses[1] as List<Map<String, dynamic>>;
       permissions = (responses[2] as List<String>).toSet();
     } on DlcApiException catch (e) {
-      error = e.message;
+      if (isBranchScopeError(e)) {
+        await _markBranchUnavailable(selected);
+      } else {
+        _setError(e);
+      }
     } finally {
       loadingBranch = false;
       notifyListeners();
     }
   }
 
+  /// Race: the branch was listed as selectable but the server refused it.
+  /// Re-read the list so the friendly state shows the real status.
+  Future<void> _markBranchUnavailable(BranchSummary selected) async {
+    branchUnavailable = true;
+    error = null;
+    errorDetails = null;
+    dashboard = const {};
+    pumps = const [];
+    permissions = globalPermissions;
+    try {
+      await _loadBranches();
+    } on DlcApiException {
+      // Keep the last known list; the state below still explains the situation.
+    }
+    branch = branches.where((b) => b.id == selected.id).firstOrNull ?? selected;
+  }
+
+  /// Leaves the selected branch (back to the branch list).
+  void clearBranch() {
+    branch = null;
+    branchUnavailable = false;
+    dashboard = const {};
+    pumps = const [];
+    permissions = const {};
+    error = null;
+    errorDetails = null;
+    notifyListeners();
+  }
+
   Future<void> refresh() async {
-    if (branch != null) {
+    if (branch != null && !branchNotReady) {
       await selectBranch(branch!);
       return;
     }
+    final current = branch?.id;
     try {
       await _loadBranches();
       error = null;
+      errorDetails = null;
     } on DlcApiException catch (e) {
-      error = e.message;
+      _setError(e);
+    }
+    if (current != null) {
+      // The branch may have been activated meanwhile.
+      final updated = branches.where((b) => b.id == current).firstOrNull;
+      if (updated != null && updated.isActive) {
+        await selectBranch(updated);
+        return;
+      }
+      branch = updated;
+      branchUnavailable = false;
     }
     notifyListeners();
   }
@@ -178,6 +299,22 @@ class OperationsController extends ChangeNotifier {
     await refresh();
   }
 
+  void _handleSessionExpired() {
+    identity = null;
+    branches = const [];
+    branch = null;
+    pumps = const [];
+    dashboard = const {};
+    permissions = const {};
+    globalPermissions = const {};
+    loadingBranch = false;
+    branchUnavailable = false;
+    errorDetails = null;
+    busy = false;
+    error = 'Tu sesión expiró. Inicia sesión de nuevo.';
+    notifyListeners();
+  }
+
   Future<void> logout() async {
     busy = true;
     notifyListeners();
@@ -193,57 +330,14 @@ class OperationsController extends ChangeNotifier {
       dashboard = const {};
       permissions = const {};
       globalPermissions = const {};
+      error = null;
+      errorDetails = null;
+      branchUnavailable = false;
       busy = false;
       notifyListeners();
     }
   }
 }
-
-const cream = Color(0xfff5f0e5);
-const surface = Color(0xfffffdf8);
-const orange = Color(0xffd94d24);
-const forest = Color(0xff213b32);
-const muted = Color(0xff6d706a);
-const border = Color(0xffe4ddcf);
-const green = Color(0xff287553);
-const red = Color(0xffb93a31);
-
-final theme = ThemeData(
-  useMaterial3: true,
-  scaffoldBackgroundColor: cream,
-  colorScheme: ColorScheme.fromSeed(
-    seedColor: orange,
-    primary: orange,
-    secondary: forest,
-    surface: surface,
-    error: red,
-  ),
-  inputDecorationTheme: InputDecorationTheme(
-    filled: true,
-    fillColor: surface,
-    border: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(15),
-      borderSide: const BorderSide(color: border),
-    ),
-    enabledBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(15),
-      borderSide: const BorderSide(color: border),
-    ),
-    focusedBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(15),
-      borderSide: const BorderSide(color: orange, width: 1.6),
-    ),
-  ),
-  cardTheme: CardThemeData(
-    color: surface,
-    elevation: 0,
-    margin: EdgeInsets.zero,
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(20),
-      side: const BorderSide(color: border),
-    ),
-  ),
-);
 
 class OperationsApp extends StatefulWidget {
   const OperationsApp({required this.controller, super.key});
@@ -256,22 +350,29 @@ class _OperationsAppState extends State<OperationsApp> {
   @override
   void initState() {
     super.initState();
+    widget.controller.themeController.load();
     widget.controller.start();
   }
 
   @override
   void dispose() {
+    widget.controller.themeController.dispose();
     widget.controller.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
-    animation: widget.controller,
+    animation: Listenable.merge([
+      widget.controller,
+      widget.controller.themeController,
+    ]),
     builder: (context, _) => MaterialApp(
       title: 'DLC Operaciones',
       debugShowCheckedModeBanner: false,
-      theme: theme,
+      theme: lightTheme,
+      darkTheme: darkTheme,
+      themeMode: widget.controller.themeController.mode,
       home: RootPage(controller: widget.controller),
     ),
   );
@@ -287,7 +388,83 @@ class RootPage extends StatelessWidget {
     if (controller.identity == null) return LoginPage(controller: controller);
     if (controller.branch == null)
       return BranchPickerPage(controller: controller);
+    if (controller.branchNotReady)
+      return BranchNotReadyPage(controller: controller);
     return HomePage(controller: controller);
+  }
+}
+
+Future<void> openBranchOnboarding(
+  BuildContext context,
+  OperationsController controller, {
+  String? branchId,
+}) => Navigator.push(
+  context,
+  MaterialPageRoute<void>(
+    builder: (_) => BranchOnboardingScreen(
+      api: controller.api,
+      initialBranchId: branchId,
+      onActivated: () => controller.refresh(),
+    ),
+  ),
+);
+
+/// Shown instead of the dashboard when the selected branch is a draft /
+/// not active (or the server refused it as out of scope).
+class BranchNotReadyPage extends StatelessWidget {
+  const BranchNotReadyPage({required this.controller, super.key});
+  final OperationsController controller;
+  @override
+  Widget build(BuildContext context) {
+    final branch = controller.branch!;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Sucursal'),
+        actions: [
+          IconButton(
+            onPressed: controller.refresh,
+            tooltip: 'Actualizar',
+            icon: const Icon(Icons.refresh),
+          ),
+          IconButton(
+            onPressed: controller.clearBranch,
+            tooltip: 'Ver sucursales',
+            icon: const Icon(Icons.store_outlined),
+          ),
+          IconButton(
+            onPressed: controller.logout,
+            tooltip: 'Cerrar sesión',
+            icon: const Icon(Icons.logout),
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: RefreshIndicator(
+          onRefresh: controller.refresh,
+          child: ListView(
+            padding: const EdgeInsets.all(18),
+            children: [
+              BrandHeader(
+                title: branch.name,
+                subtitle: '${branch.code} · ${branch.zone}',
+              ),
+              const SizedBox(height: 14),
+              if (controller.error != null)
+                ErrorBox(controller.error!, details: controller.errorDetails),
+              BranchNotReadyPanel(
+                branch: branch,
+                canManage: controller.canManageBranches,
+                onOpenOnboarding: () => openBranchOnboarding(
+                  context,
+                  controller,
+                  branchId: branch.id,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -329,10 +506,10 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                 ),
                 const SizedBox(height: 14),
-                const Text(
+                Text(
                   'OPERACIÓN DLC',
                   style: TextStyle(
-                    color: orange,
+                    color: context.dlc.brand,
                     fontWeight: FontWeight.w800,
                     letterSpacing: 1.2,
                   ),
@@ -341,14 +518,14 @@ class _LoginPageState extends State<LoginPage> {
                 Text(
                   'Iniciar sesión',
                   style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    color: forest,
+                    color: context.dlc.ink,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
                 const SizedBox(height: 6),
-                const Text(
+                Text(
                   'Ingresa con la cuenta asignada por tu organización. Tu perfil determina las sucursales y acciones disponibles.',
-                  style: TextStyle(color: muted, height: 1.45),
+                  style: TextStyle(color: context.dlc.muted, height: 1.45),
                 ),
                 const SizedBox(height: 20),
                 Card(
@@ -356,6 +533,7 @@ class _LoginPageState extends State<LoginPage> {
                     padding: const EdgeInsets.all(18),
                     child: Form(
                       key: form,
+                      autovalidateMode: AutovalidateMode.onUserInteraction,
                       child: Column(
                         children: [
                           TextFormField(
@@ -368,10 +546,7 @@ class _LoginPageState extends State<LoginPage> {
                               labelText: 'Correo electrónico',
                               prefixIcon: Icon(Icons.alternate_email),
                             ),
-                            validator: (v) =>
-                                v == null || !v.trim().contains('@')
-                                ? 'Escribe un correo válido.'
-                                : null,
+                            validator: emailAddress,
                           ),
                           const SizedBox(height: 13),
                           TextFormField(
@@ -410,12 +585,14 @@ class _LoginPageState extends State<LoginPage> {
                             child: FilledButton.icon(
                               onPressed: widget.controller.busy ? null : submit,
                               icon: widget.controller.busy
-                                  ? const SizedBox(
+                                  ? SizedBox(
                                       width: 18,
                                       height: 18,
                                       child: CircularProgressIndicator(
                                         strokeWidth: 2,
-                                        color: Colors.white,
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.onPrimary,
                                       ),
                                     )
                                   : const Icon(Icons.login),
@@ -425,7 +602,7 @@ class _LoginPageState extends State<LoginPage> {
                                     : 'Entrar',
                               ),
                               style: FilledButton.styleFrom(
-                                backgroundColor: orange,
+                                backgroundColor: context.dlc.brand,
                                 minimumSize: const Size.fromHeight(52),
                               ),
                             ),
@@ -436,10 +613,10 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                 ),
                 const SizedBox(height: 14),
-                const Center(
+                Center(
                   child: Text(
                     'Acceso protegido · DLC',
-                    style: TextStyle(color: muted, fontSize: 12),
+                    style: TextStyle(color: context.dlc.muted, fontSize: 12),
                   ),
                 ),
               ],
@@ -450,12 +627,16 @@ class _LoginPageState extends State<LoginPage> {
     ),
   );
   Future<void> submit() async {
-    if (form.currentState?.validate() ?? false)
+    if (form.currentState?.validate() ?? false) {
       await widget.controller.signIn(email.text, password.text);
+      if (widget.controller.error != null) Haptics.error();
+    } else {
+      Haptics.error();
+    }
   }
 }
 
-class BranchPickerPage extends StatelessWidget {
+class BranchPickerPage extends StatefulWidget {
   const BranchPickerPage({
     required this.controller,
     this.onSelected,
@@ -464,88 +645,187 @@ class BranchPickerPage extends StatelessWidget {
   final OperationsController controller;
   final ValueChanged<BranchSummary>? onSelected;
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      title: const Text('Sucursales'),
-      actions: [
-        if (controller.globalPermissions.contains('branch.manage'))
-          IconButton(
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute<void>(
-                builder: (_) => BranchOnboardingScreen(
-                  api: controller.api,
-                  onActivated: () => controller.refresh(),
+  State<BranchPickerPage> createState() => _BranchPickerPageState();
+}
+
+class _BranchPickerPageState extends State<BranchPickerPage> {
+  String? country;
+
+  OperationsController get controller => widget.controller;
+
+  Future<void> openNetwork(BuildContext context) => Navigator.push(
+    context,
+    MaterialPageRoute<void>(
+      builder: (_) => NetworkDashboardPage(
+        api: controller.api,
+        branches: controller.branches,
+        onOpenOnboarding: controller.canManageBranches
+            ? () => openBranchOnboarding(context, controller)
+            : null,
+        onOpenBranch: (b) async {
+          Navigator.pop(context);
+          await controller.selectBranch(b);
+          if (context.mounted && widget.onSelected != null) {
+            widget.onSelected!(b);
+          }
+        },
+      ),
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final countries = countryOptions(controller.branches);
+    final visible = filterBranchesByCountry(controller.branches, country);
+    final canSeeNetwork =
+        controller.globalPermissions.contains('branch.read') &&
+        controller.branches.length > 1;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Sucursales'),
+        actions: [
+          if (canSeeNetwork)
+            IconButton(
+              onPressed: () => openNetwork(context),
+              tooltip: 'Tablero consolidado',
+              icon: const Icon(Icons.public),
+            ),
+          if (controller.globalPermissions.contains('branch.manage'))
+            IconButton(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute<void>(
+                  builder: (_) => BranchOnboardingScreen(
+                    api: controller.api,
+                    onActivated: () => controller.refresh(),
+                  ),
                 ),
               ),
+              tooltip: 'Alta de sucursal',
+              icon: const Icon(Icons.add_business_outlined),
             ),
-            tooltip: 'Alta de sucursal',
-            icon: const Icon(Icons.add_business_outlined),
+          ListenableBuilder(
+            listenable: controller.themeController,
+            builder: (context, _) => IconButton(
+              onPressed: () => controller.themeController.select(
+                nextThemeMode(controller.themeController.mode),
+              ),
+              tooltip:
+                  'Apariencia: ${themeModeLabel(controller.themeController.mode)}',
+              icon: Icon(themeModeIcon(controller.themeController.mode)),
+            ),
           ),
-        IconButton(
-          onPressed: controller.logout,
-          tooltip: 'Cerrar sesión',
-          icon: const Icon(Icons.logout),
-        ),
-      ],
-    ),
-    body: RefreshIndicator(
-      onRefresh: controller.refresh,
-      child: ListView(
-        padding: const EdgeInsets.all(18),
-        children: [
-          BrandHeader(
-            title: controller.identity!.isGeneralManager
-                ? 'Vista de la red'
-                : 'Tus sucursales',
-            subtitle:
-                '${controller.identity!.displayName} · ${controller.identity!.roles.map((r) => r.name).toSet().join(', ')}',
+          IconButton(
+            onPressed: controller.logout,
+            tooltip: 'Cerrar sesión',
+            icon: const Icon(Icons.logout),
           ),
-          const SizedBox(height: 15),
-          if (controller.error != null) ErrorBox(controller.error!),
-          if (controller.globalPermissions.contains('branch.manage')) ...[
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.add_business_outlined, color: orange),
-                title: const Text('Configurar una sucursal'),
-                subtitle: const Text('Crear o continuar un borrador de alta.'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute<void>(
-                    builder: (_) => BranchOnboardingScreen(
-                      api: controller.api,
-                      onActivated: () => controller.refresh(),
+        ],
+      ),
+      body: RefreshIndicator(
+        onRefresh: controller.refresh,
+        child: ListView(
+          padding: const EdgeInsets.all(18),
+          children: [
+            BrandHeader(
+              title: controller.identity!.isGeneralManager
+                  ? 'Vista de la red'
+                  : 'Tus sucursales',
+              subtitle:
+                  '${controller.identity!.displayName} · ${controller.identity!.roles.map((r) => r.name).toSet().join(', ')}',
+            ),
+            const SizedBox(height: 15),
+            if (controller.error != null)
+              ErrorBox(controller.error!, details: controller.errorDetails),
+            if (controller.branches.isNotEmpty &&
+                controller.activeBranchList.isEmpty) ...[
+              NoActiveBranchesPanel(
+                canManage: controller.canManageBranches,
+                onOpenOnboarding: () =>
+                    openBranchOnboarding(context, controller),
+              ),
+              const SizedBox(height: 10),
+            ],
+            if (canSeeNetwork) ...[
+              Card(
+                child: ListTile(
+                  leading: Icon(Icons.public, color: context.dlc.brand),
+                  title: const Text('Tablero consolidado'),
+                  subtitle: const Text(
+                    'Ventas, cortes y niveles por país o sucursal.',
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => openNetwork(context),
+                ),
+              ),
+              const SizedBox(height: 10),
+            ],
+            if (controller.globalPermissions.contains('branch.manage')) ...[
+              Card(
+                child: ListTile(
+                  leading: Icon(
+                    Icons.add_business_outlined,
+                    color: context.dlc.brand,
+                  ),
+                  title: const Text('Configurar una sucursal'),
+                  subtitle: const Text(
+                    'Crear o continuar un borrador de alta.',
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute<void>(
+                      builder: (_) => BranchOnboardingScreen(
+                        api: controller.api,
+                        onActivated: () => controller.refresh(),
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
-            const SizedBox(height: 10),
-          ],
-          if (controller.branches.isEmpty && controller.error == null)
-            const EmptyPanel(
-              icon: Icons.store_mall_directory_outlined,
-              title: 'Sin sucursales visibles',
-              message:
-                  'La cuenta no tiene asignación activa o no hay sucursales disponibles.',
-            ),
-          ...controller.branches.map(
-            (b) => Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: BranchCard(
-                branch: b,
-                onTap: () async {
-                  await controller.selectBranch(b);
-                  if (context.mounted && onSelected != null) onSelected!(b);
+              const SizedBox(height: 10),
+            ],
+            if (countries.length > 1) ...[
+              CountryDropdown(
+                value: country,
+                includeAll: true,
+                codes: [for (final c in countries) c.countryCode],
+                counts: {
+                  for (final c in countries) c.countryCode: c.branchCount,
+                },
+                onChanged: (v) {
+                  Haptics.selection();
+                  setState(() => country = v);
                 },
               ),
+              const SizedBox(height: 10),
+            ],
+            if (controller.branches.isEmpty && controller.error == null)
+              const EmptyPanel(
+                icon: Icons.store_mall_directory_outlined,
+                title: 'Sin sucursales visibles',
+                message:
+                    'La cuenta no tiene asignación activa o no hay sucursales disponibles.',
+              ),
+            ...visible.map(
+              (b) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: BranchCard(
+                  branch: b,
+                  onTap: () async {
+                    await controller.selectBranch(b);
+                    if (context.mounted && widget.onSelected != null) {
+                      widget.onSelected!(b);
+                    }
+                  },
+                ),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class HomePage extends StatefulWidget {
@@ -585,7 +865,12 @@ class _HomePageState extends State<HomePage> {
               onPressed: () => Navigator.push(
                 context,
                 MaterialPageRoute<void>(
-                  builder: (_) => OperationalAssetsScreen(api: c.api, branchId: c.branch!.id, permissions: c.permissions, branches: c.branches),
+                  builder: (_) => OperationalAssetsScreen(
+                    api: c.api,
+                    branchId: c.branch!.id,
+                    permissions: c.permissions,
+                    branches: c.branches,
+                  ),
                 ),
               ),
               tooltip: 'Activos operativos',
@@ -682,7 +967,8 @@ class DashboardPage extends StatelessWidget {
                 '${controller.identity!.isGeneralManager ? 'Gerente General' : 'Gerente de Sucursal'} · ${controller.branch!.zone}',
           ),
           const SizedBox(height: 14),
-          if (controller.error != null) ErrorBox(controller.error!),
+          if (controller.error != null)
+            ErrorBox(controller.error!, details: controller.errorDetails),
           if (controller.loadingBranch && data.isEmpty)
             const LinearProgressIndicator(minHeight: 3),
           if (data.isEmpty && !controller.loadingBranch)
@@ -701,7 +987,7 @@ class DashboardPage extends StatelessWidget {
                     value: '${tanks.length}',
                     detail: 'configurados',
                     icon: Icons.opacity_outlined,
-                    color: orange,
+                    color: context.dlc.brand,
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -711,7 +997,9 @@ class DashboardPage extends StatelessWidget {
                     value: '${incidents.length}',
                     detail: 'abiertas',
                     icon: Icons.report_problem_outlined,
-                    color: incidents.isEmpty ? green : red,
+                    color: incidents.isEmpty
+                        ? context.dlc.optimal
+                        : context.dlc.critical,
                   ),
                 ),
               ],
@@ -732,14 +1020,15 @@ class DashboardPage extends StatelessWidget {
                             contentPadding: EdgeInsets.zero,
                             leading: Icon(
                               closed ? Icons.check_circle : Icons.timelapse,
-                              color: closed ? green : orange,
+                              color: closed
+                                  ? context.dlc.optimal
+                                  : context.dlc.brand,
                             ),
                             title: Text(
-                              slot == '1'
-                                  ? 'Matutino'
-                                  : slot == '2'
-                                  ? 'Vespertino'
-                                  : 'Corte ${slot ?? '—'}',
+                              [
+                                cutName(slot),
+                                cutWindowLabel(cut),
+                              ].where((part) => part.isNotEmpty).join(' · '),
                               style: const TextStyle(
                                 fontWeight: FontWeight.w800,
                               ),
@@ -752,6 +1041,27 @@ class DashboardPage extends StatelessWidget {
                 ),
               ),
             ),
+            if (cuts.any((c) => num(mapOf(c)['closedSalesUsd']) != null)) ...[
+              const SizedBox(height: 10),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: TrendBarChart(
+                    title: 'Ventas por corte de hoy (USD)',
+                    points: [
+                      for (final raw in cuts)
+                        if (num(mapOf(raw)['closedSalesUsd']) != null)
+                          TrendPoint(
+                            cutName(mapOf(raw)['slot']),
+                            num(mapOf(raw)['closedSalesUsd'])!,
+                          ),
+                    ],
+                    format: formatUsd,
+                    color: context.dlc.brand,
+                  ),
+                ),
+              ),
+            ],
             const SizedBox(height: 14),
             SectionTitle(
               title: 'Inventario de combustible',
@@ -759,63 +1069,76 @@ class DashboardPage extends StatelessWidget {
                   ? 'Dato incompleto'
                   : '${fmt(inv['totalLiters'])} L',
             ),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: TankLevelBars(
+                  levels: fuelLevelsFromTanks(tanks.map(mapOf)),
+                ),
+              ),
+            ),
             ...tanks.map((raw) {
               final t = mapOf(raw);
-              final pct = num(t['percentage']);
-              final color = pct == null
-                  ? muted
-                  : pct < num(t['criticalPercent'] ?? 10)!
-                  ? red
-                  : pct < num(t['warningPercent'] ?? 20)!
-                  ? const Color(0xffb77916)
-                  : green;
+              final pct = tankPercent(t);
+              final status = pct == null ? null : tankStatusForPercent(pct);
+              final color = status == null
+                  ? context.dlc.muted
+                  : context.dlc.foreground(status);
+              final fuel =
+                  '${t['fuelName'] ?? 'Combustible'} · ${t['code'] ?? ''}';
               return Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(14),
-                    child: Column(
-                      children: [
-                        Row(
+                  child: Semantics(
+                    container: true,
+                    label:
+                        '$fuel: ${pct == null ? 'sin medición' : '${pct.toStringAsFixed(1)} %, ${tankStatusText(status!).toLowerCase()}'}',
+                    child: ExcludeSemantics(
+                      child: Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: Column(
                           children: [
-                            Expanded(
-                              child: Text(
-                                '${t['fuelName'] ?? 'Combustible'} · ${t['code'] ?? ''}',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w800,
+                            Row(
+                              children: [
+                                Icon(
+                                  status?.icon ?? Icons.help_outline,
+                                  size: 18,
+                                  color: color,
                                 ),
-                              ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    fuel,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                                Text(
+                                  pct == null
+                                      ? 'Sin medición'
+                                      : '${pct.toStringAsFixed(1)}% · ${status!.label}',
+                                  style: TextStyle(
+                                    color: color,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ],
                             ),
-                            Text(
-                              pct == null
-                                  ? 'Sin medición'
-                                  : '${pct.toStringAsFixed(1)}%',
-                              style: TextStyle(
-                                color: color,
-                                fontWeight: FontWeight.w800,
+                            const SizedBox(height: 6),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                '${t['onHandLiters'] == null ? 'Sin saldo' : fmt(t['onHandLiters']) + ' L'} · capacidad ${fmt(t['capacityLiters'])} L',
+                                style: TextStyle(
+                                  color: context.dlc.muted,
+                                  fontSize: 12,
+                                ),
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 9),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(99),
-                          child: LinearProgressIndicator(
-                            value: pct == null ? 0 : (pct / 100).clamp(0, 1),
-                            minHeight: 8,
-                            color: color,
-                            backgroundColor: border,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            '${t['onHandLiters'] == null ? 'Sin saldo' : fmt(t['onHandLiters']) + ' L'} · capacidad ${fmt(t['capacityLiters'])} L',
-                            style: const TextStyle(color: muted, fontSize: 12),
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
@@ -849,7 +1172,7 @@ class DashboardPage extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               'Última actualización: ${dateLabel(data['lastSourceAt'])} · Día operativo ${data['operationalDate'] ?? '—'}',
-              style: const TextStyle(color: muted, fontSize: 11),
+              style: TextStyle(color: context.dlc.muted, fontSize: 11),
             ),
           ],
         ],
@@ -867,17 +1190,17 @@ class PumpsPage extends StatelessWidget {
     child: ListView(
       padding: const EdgeInsets.fromLTRB(18, 5, 18, 24),
       children: [
-        const Text(
+        Text(
           'Equipo de pista',
           style: TextStyle(
             fontSize: 23,
             fontWeight: FontWeight.w800,
-            color: forest,
+            color: context.dlc.ink,
           ),
         ),
-        const Text(
+        Text(
           'Abre una bomba para ver sus datos y registrar una incidencia.',
-          style: TextStyle(color: muted),
+          style: TextStyle(color: context.dlc.muted),
         ),
         const SizedBox(height: 14),
         if (controller.error != null) ErrorBox(controller.error!),
@@ -939,13 +1262,13 @@ class PumpList extends StatelessWidget {
                     height: 44,
                     decoration: BoxDecoration(
                       color: ready
-                          ? const Color(0xffe5f1e7)
-                          : const Color(0xffffe7dd),
+                          ? context.dlc.optimalContainer
+                          : context.dlc.brandContainer,
                       borderRadius: BorderRadius.circular(14),
                     ),
                     child: Icon(
                       Icons.local_gas_station,
-                      color: ready ? green : red,
+                      color: ready ? context.dlc.optimal : context.dlc.critical,
                     ),
                   ),
                   const SizedBox(width: 11),
@@ -960,12 +1283,17 @@ class PumpList extends StatelessWidget {
                         if (fuels.isNotEmpty)
                           Text(
                             fuels,
-                            style: const TextStyle(color: muted, fontSize: 12),
+                            style: TextStyle(
+                              color: context.dlc.muted,
+                              fontSize: 12,
+                            ),
                           ),
                         Text(
                           stateLabel(status),
                           style: TextStyle(
-                            color: ready ? green : red,
+                            color: ready
+                                ? context.dlc.optimal
+                                : context.dlc.critical,
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
                           ),
@@ -976,7 +1304,7 @@ class PumpList extends StatelessWidget {
                   Icon(
                     compact ? Icons.chevron_right : Icons.arrow_forward_ios,
                     size: 16,
-                    color: muted,
+                    color: context.dlc.muted,
                   ),
                 ],
               ),
@@ -1045,16 +1373,16 @@ class _PumpDetailPageState extends State<PumpDetailPage> {
                 children: [
                   Text(
                     textOf(pump, ['name', 'code'], fallback: 'Dispensador'),
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 21,
                       fontWeight: FontWeight.w800,
-                      color: forest,
+                      color: context.dlc.ink,
                     ),
                   ),
                   const SizedBox(height: 5),
                   Text(
                     '${widget.controller.branch!.name} · ${textOf(pump, ['serviceMode'], fallback: 'Modo no configurado')}',
-                    style: const TextStyle(color: muted),
+                    style: TextStyle(color: context.dlc.muted),
                   ),
                   const SizedBox(height: 9),
                   StatusPill(
@@ -1086,7 +1414,10 @@ class _PumpDetailPageState extends State<PumpDetailPage> {
               padding: const EdgeInsets.only(top: 7),
               child: Card(
                 child: ListTile(
-                  leading: const Icon(Icons.water_drop_outlined, color: orange),
+                  leading: Icon(
+                    Icons.water_drop_outlined,
+                    color: context.dlc.brand,
+                  ),
                   title: Text(
                     textOf(n, [
                       'fuelName',
@@ -1115,9 +1446,9 @@ class _PumpDetailPageState extends State<PumpDetailPage> {
                           onPressed: !widget.controller.can('inventory.measure')
                               ? null
                               : () => baselineDialog(n),
-                          icon: const Icon(
+                          icon: Icon(
                             Icons.add_circle_outline,
-                            color: orange,
+                            color: context.dlc.brand,
                           ),
                         )
                       : StatusPill(
@@ -1134,7 +1465,7 @@ class _PumpDetailPageState extends State<PumpDetailPage> {
               icon: const Icon(Icons.add_alert_outlined),
               label: const Text('Registrar incidencia'),
               style: FilledButton.styleFrom(
-                backgroundColor: orange,
+                backgroundColor: context.dlc.brand,
                 minimumSize: const Size.fromHeight(50),
               ),
             )
@@ -1158,42 +1489,49 @@ class _PumpDetailPageState extends State<PumpDetailPage> {
     final id = textOf(nozzle, ['id']);
     final ok = await showDialog<bool>(
       context: context,
-      builder: (d) => AlertDialog(
-        title: const Text('Línea base del totalizador'),
-        content: Column(
+      builder: (d) => ValidatedFormDialog(
+        title: 'Línea base del totalizador',
+        submitLabel: 'Guardar línea base',
+        isValid: () => allValid([
+          positiveNumber(
+            value.text,
+            field: 'La lectura',
+            allowZero: true,
+            maxDecimals: 9,
+          ),
+          maxLengthText(serial.text, 80, field: 'La serie'),
+        ]),
+        onCancel: () => Navigator.pop(d, false),
+        onSubmit: () => Navigator.pop(d, true),
+        contentBuilder: (context, changed) => Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             const Text(
               'Este valor inicia la continuidad de lecturas y debe capturarse antes del primer corte.',
             ),
             const SizedBox(height: 10),
-            TextField(
+            LiveTextField(
               controller: value,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
+              label: 'Lectura acumulada',
+              keyboardType: LiveTextField.decimal(),
+              validator: (v) => positiveNumber(
+                v,
+                field: 'La lectura',
+                allowZero: true,
+                maxDecimals: 9,
               ),
-              decoration: const InputDecoration(labelText: 'Lectura acumulada'),
+              onChanged: changed,
             ),
             const SizedBox(height: 8),
-            TextField(
+            LiveTextField(
               controller: serial,
+              label: 'Serie del medidor (opcional)',
               maxLength: 80,
-              decoration: const InputDecoration(
-                labelText: 'Serie del medidor (opcional)',
-              ),
+              validator: (v) => maxLengthText(v, 80, field: 'La serie'),
+              onChanged: changed,
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(d, false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(d, true),
-            child: const Text('Guardar línea base'),
-          ),
-        ],
       ),
     );
     if (ok == true && mounted) {
@@ -1205,8 +1543,10 @@ class _PumpDetailPageState extends State<PumpDetailPage> {
           serial: serial.text,
           note: 'Línea base inicial',
         );
+        Haptics.success();
         await load();
       } on DlcApiException catch (e) {
+        Haptics.error();
         if (mounted)
           ScaffoldMessenger.of(
             context,
@@ -1222,51 +1562,52 @@ class _PumpDetailPageState extends State<PumpDetailPage> {
     String severity = 'medium';
     final submit = await showDialog<bool>(
       context: context,
-      builder: (dialog) => StatefulBuilder(
-        builder: (context, setLocal) => AlertDialog(
-          title: const Text('Reportar daño o incidencia'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'Se vinculará con esta bomba y sucursal.',
-                style: TextStyle(color: muted),
-              ),
-              const SizedBox(height: 10),
-              DropdownButtonFormField<String>(
-                initialValue: severity,
-                decoration: const InputDecoration(labelText: 'Severidad'),
-                items: const [
-                  DropdownMenuItem(value: 'low', child: Text('Baja')),
-                  DropdownMenuItem(value: 'medium', child: Text('Media')),
-                  DropdownMenuItem(value: 'high', child: Text('Alta')),
-                  DropdownMenuItem(value: 'critical', child: Text('Crítica')),
-                ],
-                onChanged: (v) {
-                  if (v != null) setLocal(() => severity = v);
-                },
-              ),
-              const SizedBox(height: 9),
-              TextField(
-                controller: description,
-                minLines: 3,
-                maxLines: 5,
-                maxLength: 2000,
-                decoration: const InputDecoration(
-                  labelText: 'Qué ocurrió',
-                  hintText: 'Ej.: la manguera presenta una fuga visible.',
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialog, false),
-              child: const Text('Cancelar'),
+      builder: (dialog) => ValidatedFormDialog(
+        title: 'Reportar daño o incidencia',
+        submitLabel: 'Guardar',
+        isValid: () => allValid([
+          minLengthText(description.text, 10, field: 'La descripción'),
+        ]),
+        onCancel: () => Navigator.pop(dialog, false),
+        onSubmit: () => Navigator.pop(dialog, true),
+        contentBuilder: (context, changed) => Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Se vinculará con esta bomba y sucursal.',
+              style: TextStyle(color: context.dlc.muted),
             ),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialog, true),
-              child: const Text('Guardar'),
+            const SizedBox(height: 10),
+            DropdownButtonFormField<String>(
+              initialValue: severity,
+              decoration: const InputDecoration(labelText: 'Severidad'),
+              items: const [
+                DropdownMenuItem(value: 'low', child: Text('Baja')),
+                DropdownMenuItem(value: 'medium', child: Text('Media')),
+                DropdownMenuItem(value: 'high', child: Text('Alta')),
+                DropdownMenuItem(value: 'critical', child: Text('Crítica')),
+              ],
+              onChanged: (v) {
+                if (v == null) return;
+                severity = v;
+                if (v == 'critical') {
+                  Haptics.critical();
+                } else {
+                  Haptics.selection();
+                }
+                changed();
+              },
+            ),
+            const SizedBox(height: 9),
+            LiveTextField(
+              controller: description,
+              label: 'Qué ocurrió',
+              hint: 'Ej.: la manguera presenta una fuga visible.',
+              minLines: 3,
+              maxLines: 5,
+              maxLength: 2000,
+              validator: (v) => minLengthText(v, 10, field: 'La descripción'),
+              onChanged: changed,
             ),
           ],
         ),
@@ -1282,11 +1623,13 @@ class _PumpDetailPageState extends State<PumpDetailPage> {
         description.text,
         severity,
       );
+      Haptics.success();
       if (mounted)
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('Incidencia registrada.')));
     } on DlcApiException catch (e) {
+      Haptics.error();
       if (mounted)
         ScaffoldMessenger.of(
           context,
@@ -1425,8 +1768,8 @@ class _IncidentsPageState extends State<IncidentsPage> {
                     color:
                         row['severity'] == 'critical' ||
                             row['severity'] == 'high'
-                        ? red
-                        : orange,
+                        ? context.dlc.critical
+                        : context.dlc.brand,
                   ),
                   title: Text(
                     textOf(row, ['code', 'category'], fallback: 'Incidencia'),
@@ -1520,10 +1863,10 @@ class _IncidentDetailPageState extends State<IncidentDetailPage> {
                 children: [
                   Text(
                     textOf(incident, ['category'], fallback: 'Incidencia'),
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w800,
-                      color: forest,
+                      color: context.dlc.ink,
                     ),
                   ),
                   const SizedBox(height: 6),
@@ -1572,7 +1915,7 @@ class _IncidentDetailPageState extends State<IncidentDetailPage> {
             final event = mapOf(e);
             return Card(
               child: ListTile(
-                leading: const Icon(Icons.history, color: orange),
+                leading: Icon(Icons.history, color: context.dlc.brand),
                 title: Text(
                   textOf(event, [
                     'action',
@@ -1603,25 +1946,22 @@ class _IncidentDetailPageState extends State<IncidentDetailPage> {
     final note = TextEditingController();
     final yes = await showDialog<bool>(
       context: context,
-      builder: (d) => AlertDialog(
-        title: Text('Avanzar a ${stateLabel(target)}'),
-        content: TextField(
+      builder: (d) => ValidatedFormDialog(
+        title: 'Avanzar a ${stateLabel(target)}',
+        submitLabel: 'Guardar',
+        isValid: () =>
+            allValid([maxLengthText(note.text, 1000, field: 'La nota')]),
+        onCancel: () => Navigator.pop(d, false),
+        onSubmit: () => Navigator.pop(d, true),
+        contentBuilder: (context, changed) => LiveTextField(
           controller: note,
+          label: 'Nota de seguimiento',
           minLines: 2,
           maxLines: 4,
           maxLength: 1000,
-          decoration: const InputDecoration(labelText: 'Nota de seguimiento'),
+          validator: (v) => maxLengthText(v, 1000, field: 'La nota'),
+          onChanged: changed,
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(d, false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(d, true),
-            child: const Text('Guardar'),
-          ),
-        ],
       ),
     );
     if (yes != true || !mounted) {
@@ -1800,12 +2140,12 @@ class _ReportsPageState extends State<ReportsPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'Crear reporte',
                   style: TextStyle(
                     fontWeight: FontWeight.w800,
                     fontSize: 17,
-                    color: forest,
+                    color: context.dlc.ink,
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -1859,12 +2199,12 @@ class _ReportsPageState extends State<ReportsPage> {
                         ? null
                         : create,
                     icon: creating
-                        ? const SizedBox(
+                        ? SizedBox(
                             width: 16,
                             height: 16,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              color: Colors.white,
+                              color: Theme.of(context).colorScheme.onPrimary,
                             ),
                           )
                         : const Icon(Icons.play_arrow),
@@ -1917,9 +2257,12 @@ class _ReportsPageState extends State<ReportsPage> {
                         ),
                       ),
                     ),
-                    leading: const CircleAvatar(
-                      backgroundColor: Color(0xffffe7dd),
-                      child: Icon(Icons.insert_chart_outlined, color: orange),
+                    leading: CircleAvatar(
+                      backgroundColor: context.dlc.brandContainer,
+                      child: Icon(
+                        Icons.insert_chart_outlined,
+                        color: context.dlc.brand,
+                      ),
                     ),
                     title: Text(
                       reportTypes[textOf(r, ['reportType', 'type'])] ??
@@ -2012,15 +2355,15 @@ class _ReportDetailPageState extends State<ReportDetailPage> {
                 children: [
                   Text(
                     '${meta['rowCount'] ?? widget.run['rowCount'] ?? '—'} filas · ${meta['timezone'] ?? 'zona horaria de sucursal'}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontWeight: FontWeight.w800,
-                      color: forest,
+                      color: context.dlc.ink,
                     ),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     'Corte de datos: ${dateLabel(meta['asOf'] ?? widget.run['createdAt'])}',
-                    style: const TextStyle(color: muted, fontSize: 12),
+                    style: TextStyle(color: context.dlc.muted, fontSize: 12),
                   ),
                   const SizedBox(height: 11),
                   Row(
@@ -2209,7 +2552,10 @@ class _CutsPageState extends State<CutsPage> {
         const SizedBox(height: 14),
         Card(
           child: ListTile(
-            leading: const Icon(Icons.calendar_today_outlined, color: orange),
+            leading: Icon(
+              Icons.calendar_today_outlined,
+              color: context.dlc.brand,
+            ),
             title: const Text('Fecha operativa'),
             subtitle: Text(dateLabel(date)),
             trailing: const Icon(Icons.edit_calendar_outlined),
@@ -2270,9 +2616,9 @@ class _CutsPageState extends State<CutsPage> {
           ),
         ],
         const SizedBox(height: 8),
-        const Text(
+        Text(
           'El cierre conserva lecturas y conciliación como historial. Solo cortes cerrados alimentan métricas históricas.',
-          style: TextStyle(color: muted, fontSize: 12, height: 1.4),
+          style: TextStyle(color: context.dlc.muted, fontSize: 12, height: 1.4),
         ),
       ],
     ),
@@ -2288,36 +2634,26 @@ class _CutCard extends StatelessWidget {
     final slot = cut['slot']?.toString();
     final status = (cut['status'] ?? 'pending').toString();
     final closed = status == 'closed';
-    final start = DateTime.tryParse(
-      cut['startsAt']?.toString() ?? '',
-    )?.toLocal();
-    final end = DateTime.tryParse(cut['endsAt']?.toString() ?? '')?.toLocal();
-    String time(DateTime? d) => d == null
-        ? '—'
-        : '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+    final window = cutWindowLabel(cut);
     return Card(
       child: ListTile(
         onTap: onTap,
         contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 7),
         leading: CircleAvatar(
           backgroundColor: closed
-              ? const Color(0xffe5f1e7)
-              : const Color(0xffffe7dd),
+              ? context.dlc.optimalContainer
+              : context.dlc.brandContainer,
           child: Icon(
             closed ? Icons.check : Icons.timelapse,
-            color: closed ? green : orange,
+            color: closed ? context.dlc.optimal : context.dlc.brand,
           ),
         ),
         title: Text(
-          slot == '1'
-              ? 'Matutino'
-              : slot == '2'
-              ? 'Vespertino'
-              : 'Corte ${slot ?? '—'}',
+          cutName(slot),
           style: const TextStyle(fontWeight: FontWeight.w800),
         ),
         subtitle: Text(
-          '${time(start)}–${time(end)} · ${stateLabel(status)}\nVersión ${cut['version'] ?? '—'} · abre el detalle para revisar lecturas',
+          '${window.isEmpty ? '—' : window} · ${stateLabel(status)}\nVersión ${cut['version'] ?? '—'} · abre el detalle para revisar lecturas',
         ),
         isThreeLine: true,
         trailing: const Icon(Icons.chevron_right),
@@ -2394,12 +2730,14 @@ class _CutDetailPageState extends State<CutDetailPage> {
     });
     try {
       await action();
+      Haptics.success();
       await load();
       if (mounted)
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text(success)));
     } on DlcApiException catch (e) {
+      Haptics.error();
       if (mounted) setState(() => error = e.message);
     } finally {
       if (mounted) setState(() => working = false);
@@ -2420,7 +2758,9 @@ class _CutDetailPageState extends State<CutDetailPage> {
             mapOf(reconciliation['review']).isNotEmpty);
     return Scaffold(
       appBar: AppBar(
-        title: Text(slot == '1' ? 'Corte matutino' : 'Corte vespertino'),
+        title: Text(
+          'Corte ${cutName(slot).toLowerCase()} ${cutWindowLabel(cut)}'.trim(),
+        ),
         actions: [
           IconButton(
             onPressed: working ? null : load,
@@ -2442,9 +2782,9 @@ class _CutDetailPageState extends State<CutDetailPage> {
                 children: [
                   Text(
                     'Estado: ${stateLabel('${cut['status'] ?? 'pending'}')}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontWeight: FontWeight.w800,
-                      color: forest,
+                      color: context.dlc.ink,
                     ),
                   ),
                   const SizedBox(height: 5),
@@ -2454,7 +2794,7 @@ class _CutDetailPageState extends State<CutDetailPage> {
                   const SizedBox(height: 7),
                   Text(
                     '${nozzles.where((n) => n['cutReadingId'] != null).length} de ${nozzles.length} mangueras visibles',
-                    style: const TextStyle(color: muted),
+                    style: TextStyle(color: context.dlc.muted),
                   ),
                 ],
               ),
@@ -2482,9 +2822,9 @@ class _CutDetailPageState extends State<CutDetailPage> {
               title: 'Lecturas de totalizador',
               trailing: '${nozzles.length} mangueras',
             ),
-            const Text(
+            Text(
               'Captura el valor acumulado del medidor. El servidor valida continuidad, duplicados y versión.',
-              style: TextStyle(color: muted, fontSize: 12),
+              style: TextStyle(color: context.dlc.muted, fontSize: 12),
             ),
             ...nozzles.map(
               (n) => Padding(
@@ -2504,7 +2844,7 @@ class _CutDetailPageState extends State<CutDetailPage> {
                           working || !widget.controller.can('cut.capture')
                           ? null
                           : () => capture(n),
-                      icon: const Icon(Icons.edit_note, color: orange),
+                      icon: Icon(Icons.edit_note, color: context.dlc.brand),
                     ),
                   ),
                 ),
@@ -2515,15 +2855,18 @@ class _CutDetailPageState extends State<CutDetailPage> {
               title: 'Medición de tanques',
               trailing: '${listOf(assets['tanks']).length}',
             ),
-            const Text(
+            Text(
               'Registra volumen, agua y temperatura observados. Los valores se validan contra capacidad en el servidor.',
-              style: TextStyle(color: muted, fontSize: 12),
+              style: TextStyle(color: context.dlc.muted, fontSize: 12),
             ),
             ...listOf(assets['tanks']).map((raw) {
               final tank = mapOf(raw);
               return Card(
                 child: ListTile(
-                  leading: const Icon(Icons.opacity_outlined, color: orange),
+                  leading: Icon(
+                    Icons.opacity_outlined,
+                    color: context.dlc.brand,
+                  ),
                   title: Text(
                     '${textOf(tank, ['code'], fallback: 'Tanque')} · ${textOf(tank, ['fuelName'], fallback: 'Combustible')}',
                   ),
@@ -2535,7 +2878,7 @@ class _CutDetailPageState extends State<CutDetailPage> {
                     onPressed: working || !widget.controller.can('cut.capture')
                         ? null
                         : () => measureTank(tank),
-                    icon: const Icon(Icons.edit_outlined, color: orange),
+                    icon: Icon(Icons.edit_outlined, color: context.dlc.brand),
                   ),
                 ),
               );
@@ -2561,7 +2904,10 @@ class _CutDetailPageState extends State<CutDetailPage> {
             ...products.map(
               (p) => Card(
                 child: ListTile(
-                  leading: const Icon(Icons.water_drop_outlined, color: orange),
+                  leading: Icon(
+                    Icons.water_drop_outlined,
+                    color: context.dlc.brand,
+                  ),
                   title: Text(
                     textOf(p, ['productName'], fallback: 'Combustible'),
                   ),
@@ -2589,7 +2935,9 @@ class _CutDetailPageState extends State<CutDetailPage> {
                     (num(row['varianceLiters']) == 0)
                         ? Icons.check_circle
                         : Icons.warning_amber,
-                    color: (num(row['varianceLiters']) == 0) ? green : orange,
+                    color: (num(row['varianceLiters']) == 0)
+                        ? context.dlc.optimal
+                        : context.dlc.brand,
                   ),
                 ),
               );
@@ -2598,7 +2946,7 @@ class _CutDetailPageState extends State<CutDetailPage> {
               final row = mapOf(raw);
               return Card(
                 child: ListTile(
-                  leading: const Icon(Icons.opacity_outlined, color: forest),
+                  leading: Icon(Icons.opacity_outlined, color: context.dlc.ink),
                   title: Text(
                     '${textOf(row, ['tankCode'], fallback: 'Tanque')} · ${textOf(row, ['fuelName'], fallback: 'Combustible')}',
                   ),
@@ -2615,11 +2963,11 @@ class _CutDetailPageState extends State<CutDetailPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         'Conciliación de cobros',
                         style: TextStyle(
                           fontWeight: FontWeight.w800,
-                          color: forest,
+                          color: context.dlc.ink,
                         ),
                       ),
                       Text(
@@ -2696,6 +3044,7 @@ class _CutDetailPageState extends State<CutDetailPage> {
   }
 
   Future<void> measureTank(Map<String, dynamic> tank) async {
+    final capacity = num(tank['capacityLiters'] ?? tank['capacityL']);
     final liters = TextEditingController(
           text: '${tank['measuredLiters'] ?? ''}',
         ),
@@ -2705,53 +3054,55 @@ class _CutDetailPageState extends State<CutDetailPage> {
         );
     final save = await showDialog<bool>(
       context: context,
-      builder: (d) => AlertDialog(
-        title: Text('Medir tanque ${textOf(tank, ['code'], fallback: '')}'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: liters,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                decoration: const InputDecoration(
-                  labelText: 'Combustible observado (L)',
-                ),
-              ),
-              TextField(
-                controller: water,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                decoration: const InputDecoration(
-                  labelText: 'Agua (L, opcional)',
-                ),
-              ),
-              TextField(
-                controller: temperature,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                  signed: true,
-                ),
-                decoration: const InputDecoration(
-                  labelText: 'Temperatura °C (opcional)',
-                ),
-              ),
-            ],
+      builder: (d) => ValidatedFormDialog(
+        title: 'Medir tanque ${textOf(tank, ['code'], fallback: '')}',
+        submitLabel: 'Guardar medición',
+        onCancel: () => Navigator.pop(d, false),
+        onSubmit: () => Navigator.pop(d, true),
+        isValid: () => allValid([
+          tankMeasureLiters(liters.text, capacity),
+          optionalNumber(water.text, field: 'El agua', maxDecimals: 3),
+          optionalNumber(
+            temperature.text,
+            field: 'La temperatura',
+            signed: true,
+            maxDecimals: 3,
           ),
+        ]),
+        contentBuilder: (context, changed) => Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            LiveTextField(
+              controller: liters,
+              label: 'Combustible observado (L)',
+              keyboardType: LiveTextField.decimal(),
+              validator: (v) => tankMeasureLiters(v, capacity),
+              onChanged: changed,
+            ),
+            const SizedBox(height: 4),
+            LiveTextField(
+              controller: water,
+              label: 'Agua (L, opcional)',
+              keyboardType: LiveTextField.decimal(),
+              validator: (v) =>
+                  optionalNumber(v, field: 'El agua', maxDecimals: 3),
+              onChanged: changed,
+            ),
+            const SizedBox(height: 4),
+            LiveTextField(
+              controller: temperature,
+              label: 'Temperatura °C (opcional)',
+              keyboardType: LiveTextField.decimal(signed: true),
+              validator: (v) => optionalNumber(
+                v,
+                field: 'La temperatura',
+                signed: true,
+                maxDecimals: 3,
+              ),
+              onChanged: changed,
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(d, false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(d, true),
-            child: const Text('Guardar medición'),
-          ),
-        ],
       ),
     );
     if (save == true && mounted) {
@@ -2776,29 +3127,40 @@ class _CutDetailPageState extends State<CutDetailPage> {
     final id = textOf(nozzle, ['id']);
     if (id.isEmpty) return;
     final input = TextEditingController();
+    final previous = num(
+      nozzle['lastMeterValue'] ?? nozzle['meterValue'] ?? nozzle['lastReading'],
+    );
     final value = await showDialog<String>(
       context: context,
-      builder: (d) => AlertDialog(
-        title: const Text('Lectura acumulada'),
-        content: TextField(
-          controller: input,
-          autofocus: true,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(
-            labelText: 'Totalizador',
-            hintText: 'Ej. 125430.250',
-          ),
+      builder: (d) => ValidatedFormDialog(
+        title: 'Lectura acumulada',
+        submitLabel: 'Guardar lectura',
+        onCancel: () => Navigator.pop(d),
+        onSubmit: () => Navigator.pop(d, input.text.trim()),
+        isValid: () => finalNotBelowInitial(input.text, previous) == null,
+        contentBuilder: (context, changed) => Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (previous != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  'Lectura anterior: ${fmt(previous)}',
+                  style: TextStyle(color: context.dlc.muted),
+                ),
+              ),
+            LiveTextField(
+              controller: input,
+              autofocus: true,
+              label: 'Totalizador',
+              hint: 'Ej. 125430.250',
+              keyboardType: LiveTextField.decimal(),
+              validator: (v) =>
+                  finalNotBelowInitial(v, previous, field: 'La lectura'),
+              onChanged: changed,
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(d),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(d, input.text.trim()),
-            child: const Text('Guardar lectura'),
-          ),
-        ],
       ),
     );
     input.dispose();
@@ -2829,28 +3191,23 @@ class _CutDetailPageState extends State<CutDetailPage> {
     final reason = TextEditingController();
     final value = await showDialog<String>(
       context: context,
-      builder: (d) => AlertDialog(
-        title: const Text('Revisión de corte'),
-        content: TextField(
+      builder: (d) => ValidatedFormDialog(
+        title: 'Revisión de corte',
+        submitLabel: 'Enviar revisión',
+        onCancel: () => Navigator.pop(d),
+        onSubmit: () => Navigator.pop(d, reason.text),
+        isValid: () =>
+            minLengthText(reason.text, 8, field: 'La explicación') == null,
+        contentBuilder: (context, changed) => LiveTextField(
           controller: reason,
+          label: 'Motivo de aprobación',
+          hint: 'Explica la discrepancia revisada',
           minLines: 2,
           maxLines: 4,
           maxLength: 500,
-          decoration: const InputDecoration(
-            labelText: 'Motivo de aprobación',
-            hintText: 'Explica la discrepancia revisada',
-          ),
+          validator: (v) => minLengthText(v, 8, field: 'La explicación'),
+          onChanged: changed,
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(d),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(d, reason.text),
-            child: const Text('Enviar revisión'),
-          ),
-        ],
       ),
     );
     reason.dispose();
@@ -2888,31 +3245,41 @@ class AccountPage extends StatelessWidget {
                     fontSize: 20,
                   ),
                 ),
-                Text(u.email, style: const TextStyle(color: muted)),
+                Text(u.email, style: TextStyle(color: context.dlc.muted)),
                 const Divider(height: 24),
                 ...u.roles.map(
                   (r) => Padding(
                     padding: const EdgeInsets.only(bottom: 5),
                     child: Text(
                       '${r.name}${r.branchId == null ? ' · Red' : ''}',
-                      style: const TextStyle(color: forest),
+                      style: TextStyle(color: context.dlc.ink),
                     ),
                   ),
                 ),
                 if (controller.branch != null)
                   Text(
                     'Sucursal: ${controller.branch!.name}',
-                    style: const TextStyle(color: muted),
+                    style: TextStyle(color: context.dlc.muted),
                   ),
               ],
             ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(17),
+            child: ThemeModeSelector(controller: controller.themeController),
           ),
         ),
         if (controller.globalPermissions.contains('branch.manage')) ...[
           const SizedBox(height: 12),
           Card(
             child: ListTile(
-              leading: const Icon(Icons.add_business_outlined, color: orange),
+              leading: Icon(
+                Icons.add_business_outlined,
+                color: context.dlc.brand,
+              ),
               title: const Text(
                 'Alta de sucursal',
                 style: TextStyle(fontWeight: FontWeight.w800),
@@ -2937,7 +3304,7 @@ class AccountPage extends StatelessWidget {
           const SizedBox(height: 12),
           Card(
             child: ListTile(
-              leading: const Icon(Icons.loyalty_outlined, color: orange),
+              leading: Icon(Icons.loyalty_outlined, color: context.dlc.brand),
               title: const Text(
                 'Programa de puntos',
                 style: TextStyle(fontWeight: FontWeight.w800),
@@ -2965,7 +3332,10 @@ class AccountPage extends StatelessWidget {
           const SizedBox(height: 12),
           Card(
             child: ListTile(
-              leading: const Icon(Icons.local_offer_outlined, color: orange),
+              leading: Icon(
+                Icons.local_offer_outlined,
+                color: context.dlc.brand,
+              ),
               title: const Text(
                 'Promociones y ofertas',
                 style: TextStyle(fontWeight: FontWeight.w800),
@@ -2997,9 +3367,9 @@ class AccountPage extends StatelessWidget {
           const SizedBox(height: 12),
           Card(
             child: ListTile(
-              leading: const Icon(
+              leading: Icon(
                 Icons.settings_input_component_outlined,
-                color: orange,
+                color: context.dlc.brand,
               ),
               title: const Text(
                 'Infraestructura de sucursal',
@@ -3026,7 +3396,7 @@ class AccountPage extends StatelessWidget {
           const SizedBox(height: 12),
           Card(
             child: ListTile(
-              leading: const Icon(Icons.groups_2_outlined, color: orange),
+              leading: Icon(Icons.groups_2_outlined, color: context.dlc.brand),
               title: const Text(
                 'Personal y turnos',
                 style: TextStyle(fontWeight: FontWeight.w800),
@@ -3053,7 +3423,7 @@ class AccountPage extends StatelessWidget {
           const SizedBox(height: 12),
           Card(
             child: ListTile(
-              leading: const Icon(Icons.build_outlined, color: orange),
+              leading: Icon(Icons.build_outlined, color: context.dlc.brand),
               title: const Text(
                 'Mantenimiento',
                 style: TextStyle(fontWeight: FontWeight.w800),
@@ -3079,7 +3449,10 @@ class AccountPage extends StatelessWidget {
           const SizedBox(height: 12),
           Card(
             child: ListTile(
-              leading: const Icon(Icons.local_shipping_outlined, color: orange),
+              leading: Icon(
+                Icons.local_shipping_outlined,
+                color: context.dlc.brand,
+              ),
               title: const Text(
                 'Compras de combustible',
                 style: TextStyle(fontWeight: FontWeight.w800),
@@ -3106,7 +3479,10 @@ class AccountPage extends StatelessWidget {
           const SizedBox(height: 12),
           Card(
             child: ListTile(
-              leading: const Icon(Icons.point_of_sale_outlined, color: orange),
+              leading: Icon(
+                Icons.point_of_sale_outlined,
+                color: context.dlc.brand,
+              ),
               title: const Text(
                 'Cajas y turnos',
                 style: TextStyle(fontWeight: FontWeight.w800),
@@ -3134,7 +3510,7 @@ class AccountPage extends StatelessWidget {
           icon: const Icon(Icons.logout),
           label: const Text('Cerrar sesión'),
           style: OutlinedButton.styleFrom(
-            foregroundColor: red,
+            foregroundColor: context.dlc.critical,
             minimumSize: const Size.fromHeight(49),
           ),
         ),
@@ -3163,11 +3539,14 @@ class BrandHeader extends StatelessWidget {
             Text(
               title,
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                color: forest,
+                color: context.dlc.ink,
                 fontWeight: FontWeight.w800,
               ),
             ),
-            Text(subtitle, style: const TextStyle(color: muted, fontSize: 12)),
+            Text(
+              subtitle,
+              style: TextStyle(color: context.dlc.muted, fontSize: 12),
+            ),
           ],
         ),
       ),
@@ -3184,16 +3563,26 @@ class BranchCard extends StatelessWidget {
     child: ListTile(
       onTap: onTap,
       contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 6),
-      leading: const CircleAvatar(
-        backgroundColor: Color(0xffffe6d5),
-        child: Icon(Icons.storefront_outlined, color: orange),
+      leading: CircleAvatar(
+        backgroundColor: context.dlc.brandContainer,
+        child: Icon(Icons.storefront_outlined, color: context.dlc.brand),
       ),
       title: Text(
         branch.name,
         style: const TextStyle(fontWeight: FontWeight.w800),
       ),
-      subtitle: Text('${branch.code} · ${branch.zone}'),
-      trailing: const Icon(Icons.chevron_right),
+      subtitle: Text(
+        '${branch.code} · ${branch.zone} · ${countryName(branch.countryCode)}',
+      ),
+      trailing: branch.isActive
+          ? const Icon(Icons.chevron_right)
+          : Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                BranchStatusChip(status: branch.status),
+                const Icon(Icons.chevron_right),
+              ],
+            ),
     ),
   );
 }
@@ -3219,16 +3608,19 @@ class MetricCard extends StatelessWidget {
         children: [
           Icon(icon, color: color),
           const SizedBox(height: 8),
-          Text(label, style: const TextStyle(color: muted, fontSize: 12)),
+          Text(label, style: TextStyle(color: context.dlc.muted, fontSize: 12)),
           Text(
             value,
-            style: const TextStyle(
-              color: forest,
+            style: TextStyle(
+              color: context.dlc.ink,
               fontSize: 24,
               fontWeight: FontWeight.w800,
             ),
           ),
-          Text(detail, style: const TextStyle(color: muted, fontSize: 11)),
+          Text(
+            detail,
+            style: TextStyle(color: context.dlc.muted, fontSize: 11),
+          ),
         ],
       ),
     ),
@@ -3247,8 +3639,8 @@ class SectionTitle extends StatelessWidget {
         Expanded(
           child: Text(
             title,
-            style: const TextStyle(
-              color: forest,
+            style: TextStyle(
+              color: context.dlc.ink,
               fontSize: 17,
               fontWeight: FontWeight.w800,
             ),
@@ -3257,8 +3649,8 @@ class SectionTitle extends StatelessWidget {
         if (trailing != null)
           Text(
             trailing!,
-            style: const TextStyle(
-              color: muted,
+            style: TextStyle(
+              color: context.dlc.muted,
               fontSize: 12,
               fontWeight: FontWeight.w600,
             ),
@@ -3279,11 +3671,11 @@ class AlertCard extends StatelessWidget {
   final bool critical;
   @override
   Widget build(BuildContext context) => Card(
-    color: critical ? const Color(0xffffece4) : surface,
+    color: critical ? context.dlc.criticalContainer : context.dlc.surface,
     child: ListTile(
       leading: Icon(
         critical ? Icons.warning_amber_rounded : Icons.info_outline,
-        color: critical ? red : orange,
+        color: critical ? context.dlc.critical : context.dlc.brand,
       ),
       title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
       subtitle: Text(detail),
@@ -3300,13 +3692,15 @@ class StatusPill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
       decoration: BoxDecoration(
-        color: ok ? const Color(0xffe5f1e7) : const Color(0xffffe7dd),
+        color: ok
+            ? context.dlc.optimalContainer
+            : context.dlc.criticalContainer,
         borderRadius: BorderRadius.circular(50),
       ),
       child: Text(
         label,
         style: TextStyle(
-          color: ok ? green : red,
+          color: ok ? context.dlc.optimal : context.dlc.critical,
           fontSize: 11,
           fontWeight: FontWeight.w800,
         ),
@@ -3316,20 +3710,59 @@ class StatusPill extends StatelessWidget {
 }
 
 class ErrorBox extends StatelessWidget {
-  const ErrorBox(this.message, {super.key});
+  const ErrorBox(this.message, {this.details, super.key});
   final String message;
+
+  /// Code / HTTP / Ref line, kept collapsed under "Detalles técnicos".
+  final String? details;
   @override
   Widget build(BuildContext context) => Card(
-    color: const Color(0xffffeae5),
+    color: context.dlc.criticalContainer,
     child: Padding(
       padding: const EdgeInsets.all(13),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.error_outline, color: red),
-          const SizedBox(width: 9),
-          Expanded(
-            child: Text(message, style: const TextStyle(color: red)),
+          Row(
+            children: [
+              Icon(Icons.error_outline, color: context.dlc.critical),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  message,
+                  style: TextStyle(color: context.dlc.critical),
+                ),
+              ),
+            ],
           ),
+          if (details != null && details!.isNotEmpty)
+            Theme(
+              data: Theme.of(
+                context,
+              ).copyWith(dividerColor: Colors.transparent),
+              child: ExpansionTile(
+                key: const Key('technical-details'),
+                tilePadding: EdgeInsets.zero,
+                childrenPadding: EdgeInsets.zero,
+                dense: true,
+                title: Text(
+                  'Detalles técnicos',
+                  style: TextStyle(color: context.dlc.critical, fontSize: 12),
+                ),
+                children: [
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: SelectableText(
+                      details!,
+                      style: TextStyle(
+                        color: context.dlc.critical,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
         ],
       ),
     ),
@@ -3351,17 +3784,20 @@ class EmptyPanel extends StatelessWidget {
       padding: const EdgeInsets.all(19),
       child: Column(
         children: [
-          Icon(icon, size: 30, color: muted),
+          Icon(icon, size: 30, color: context.dlc.muted),
           const SizedBox(height: 8),
           Text(
             title,
-            style: const TextStyle(color: forest, fontWeight: FontWeight.w800),
+            style: TextStyle(
+              color: context.dlc.ink,
+              fontWeight: FontWeight.w800,
+            ),
           ),
           const SizedBox(height: 4),
           Text(
             message,
             textAlign: TextAlign.center,
-            style: const TextStyle(color: muted),
+            style: TextStyle(color: context.dlc.muted),
           ),
         ],
       ),
@@ -3372,8 +3808,8 @@ class EmptyPanel extends StatelessWidget {
 class LoadingPage extends StatelessWidget {
   const LoadingPage({super.key});
   @override
-  Widget build(BuildContext context) => const Scaffold(
-    body: Center(child: CircularProgressIndicator(color: orange)),
+  Widget build(BuildContext context) => Scaffold(
+    body: Center(child: CircularProgressIndicator(color: context.dlc.brand)),
   );
 }
 

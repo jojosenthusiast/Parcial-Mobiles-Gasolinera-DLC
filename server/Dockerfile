@@ -22,6 +22,7 @@ COPY --from=production-deps /app/server/node_modules ./server/node_modules
 COPY --from=build /app/server/package.json ./server/package.json
 COPY --from=build /app/server/dist ./server/dist
 COPY --from=build /app/server/migrations ./server/migrations
+COPY --from=build /app/server/certs ./server/certs
 COPY --from=build /app/server/scripts ./server/scripts
 WORKDIR /app/server
 USER node

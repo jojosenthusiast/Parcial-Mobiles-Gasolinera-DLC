@@ -7,6 +7,8 @@ struct PumpRegistrationView: View {
     @State private var values: [FuelType: ReadingDraft]
     @State private var error = ""
     @State private var saved = false
+    @State private var successCount = 0
+    @State private var failureCount = 0
     @Environment(\.dismiss) private var dismiss
 
     init(vm: CutFlowViewModel, pumpNumber: Int) {
@@ -50,11 +52,16 @@ struct PumpRegistrationView: View {
                 }
 
                 if !vm.cut.isClosed {
+                    if !allReadingsValid && !hasInlineIssue {
+                        Label("Completa las seis lecturas para guardar.", systemImage: "info.circle")
+                            .font(.caption).foregroundStyle(DLCTheme.muted)
+                    }
                     Button(action: save) {
                         Label("Guardar lecturas", systemImage: "checkmark.circle.fill")
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(PrimaryButtonStyle())
+                    .disabled(!allReadingsValid)
                 }
             }
             .padding(20)
@@ -62,6 +69,45 @@ struct PumpRegistrationView: View {
         .navigationTitle("Lectura de bomba")
         .navigationBarTitleDisplayMode(.inline)
         .dlcScreen()
+        .sensoryFeedback(.success, trigger: successCount)
+        .sensoryFeedback(.error, trigger: failureCount)
+    }
+
+    // MARK: - Real-time validation (the checks in save() remain the authority)
+
+    private func isValidNumber(_ value: Double?) -> Bool {
+        guard let value else { return false }
+        return value.isFinite && value >= 0
+    }
+
+    private func isValid(_ draft: ReadingDraft) -> Bool {
+        guard let initialValue = parse(draft.initial), let finalValue = parse(draft.final) else { return false }
+        return isValidNumber(initialValue) && isValidNumber(finalValue) && finalValue >= initialValue
+    }
+
+    private var allReadingsValid: Bool {
+        FuelType.allCases.allSatisfy { isValid(values[$0] ?? ReadingDraft()) }
+    }
+
+    private var hasInlineIssue: Bool {
+        FuelType.allCases.contains { inlineIssue(for: values[$0] ?? ReadingDraft()) != nil }
+    }
+
+    private func inlineIssue(for draft: ReadingDraft) -> String? {
+        let initialText = draft.initial.trimmingCharacters(in: .whitespacesAndNewlines)
+        let finalText = draft.final.trimmingCharacters(in: .whitespacesAndNewlines)
+        let initialValue = parse(draft.initial)
+        let finalValue = parse(draft.final)
+        if !initialText.isEmpty && !isValidNumber(initialValue) {
+            return "La lectura inicial no es un número válido."
+        }
+        if !finalText.isEmpty && !isValidNumber(finalValue) {
+            return "La lectura final no es un número válido."
+        }
+        if let start = initialValue, let end = finalValue, isValidNumber(start), isValidNumber(end), end < start {
+            return "La lectura final no puede ser menor que la inicial."
+        }
+        return nil
     }
 
     private func readingCard(for fuel: FuelType) -> AnyView {
@@ -96,12 +142,19 @@ struct PumpRegistrationView: View {
                 readingField(title: "Inicial (gal)", text: binding(for: fuel, keyPath: \.initial))
                 readingField(title: "Final (gal)", text: binding(for: fuel, keyPath: \.final))
             }
+            if let message = inlineIssue(for: draft) {
+                Label(message, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(DLCTheme.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             if let initial = parse(draft.initial), let final = parse(draft.final), final >= initial {
                 HStack {
                     Text("Venta calculada")
                     Spacer()
                     Text("\(Int((final - initial).rounded()).formatted()) gal")
-                        .fontWeight(.bold).foregroundStyle(DLCTheme.forest)
+                        .fontWeight(.bold).foregroundStyle(DLCTheme.ink)
                 }
                 .font(.subheadline)
             }
@@ -114,7 +167,7 @@ struct PumpRegistrationView: View {
             Text(title).font(.caption).foregroundStyle(DLCTheme.muted)
             Text(value, format: .number.precision(.fractionLength(2)))
                 .font(.subheadline.weight(.bold))
-                .foregroundStyle(DLCTheme.forest)
+                .foregroundStyle(DLCTheme.ink)
             Text("gal").font(.caption2).foregroundStyle(DLCTheme.muted)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -154,6 +207,7 @@ struct PumpRegistrationView: View {
                   initial >= 0, final >= initial else {
                 error = "Completa las seis lecturas con números válidos; la lectura final debe ser igual o mayor que la inicial."
                 saved = false
+                failureCount += 1
                 return
             }
             readings[fuel] = (initial: initial, final: final)
@@ -161,9 +215,11 @@ struct PumpRegistrationView: View {
         if let message = vm.registerPump(number: pumpNumber, readings: readings) {
             error = message
             saved = false
+            failureCount += 1
         } else {
             error = ""
             saved = true
+            successCount += 1
         }
     }
 

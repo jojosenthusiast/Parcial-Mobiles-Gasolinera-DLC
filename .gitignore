@@ -16,3 +16,19 @@ backups/
 artifacts/*
 !artifacts/qa-2026-10-09/
 !artifacts/qa-2026-10-09/**
+
+# QA tenant bootstrap: plaintext credentials and generated SQL containing password hashes
+server/.qa-credentials.local.txt*
+server/scripts/sql/*.generated.sql
+server/render.env.local
+
+# local-only working notes (kept out of the repo)
+/docs/
+/evidence/
+/odd/
+/fixtures/
+/server/docs/
+/scripts/verify-plan.mjs
+/scripts/verify-acceptance-matrix.mjs
+/scripts/verify-release.mjs
+/scripts/package-release.mjs

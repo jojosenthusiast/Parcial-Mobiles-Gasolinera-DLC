@@ -30,7 +30,7 @@ export class MetricsService {
  async branch(id:string,p:AuthPrincipal){
   const capabilities=await this.auth.capabilities(p,id);
   if(!capabilities.includes('inventory.read'))throw new ForbiddenException('No puedes consultar el inventario.');
-  const b=await this.pool.query<{id:string;name:string;timezone:string;today:string}>(`SELECT id,name,timezone,
+  const b=await this.pool.query<{id:string;name:string;timezone:string;countryCode:string;today:string}>(`SELECT id,name,timezone,country_code AS "countryCode",
    (clock_timestamp() AT TIME ZONE timezone)::date::text AS today
    FROM branches WHERE id=$1 AND organization_id=$2 AND status='active'`,[id,p.organizationId]);
   if(!b.rows[0])throw new NotFoundException('Sucursal fuera de tu ámbito.');
@@ -95,23 +95,26 @@ export class MetricsService {
    ...anomalies.rows.map(a=>({key:`anomaly:${a.id}`,severity:'high',title:'Variación de corte pendiente',
     detail:`${a.ruleCode} · ${a.assetKey}`,status:a.status,action:{kind:'anomaly',id:a.id}})),
   ];
-  return {data:{branch:{id:b.rows[0].id,name:b.rows[0].name,timezone:b.rows[0].timezone},
+  return {data:{branch:{id:b.rows[0].id,name:b.rows[0].name,timezone:b.rows[0].timezone,countryCode:b.rows[0].countryCode},
    operationalDate:today,cuts:cuts.rows,inventory:{tanks:inventory,totalLiters:total,capacityLiters:capacity,
     missingBaselines:missing,source:'current_inventory_ledger'},openIncidents:capabilities.includes('incident.read')?incidents.rows:[],alerts,
    openMaintenanceOrders:maintenance.rows[0]?.open??0,lastSourceAt:lastSource,
    metricSources:{sales:'closed_cut_snapshot',inventory:'current_inventory_ledger',incidents:'active_incident_records'}}};
  }
- async network(p:AuthPrincipal,daysRaw?:string,selected?:string){
+ async network(p:AuthPrincipal,daysRaw?:string,selected?:string,countryRaw?:string){
   const global=await this.auth.capabilities(p);
   if(!global.includes('branch.read'))throw new ForbiddenException('La red requiere permiso global.');
   const days=Number(daysRaw??'7');
-  if(![1,7,30].includes(days)||selected!==undefined&&!uuid(selected))throw new BadRequestException('Filtro de red inválido.');
-  const branches=await this.pool.query<{id:string;name:string;code:string;timezone:string;effective_date:string;today:string}>(`SELECT id,name,code,timezone,
+  if(![1,7,30].includes(days)||selected!==undefined&&!uuid(selected)||countryRaw!==undefined&&countryRaw!==''&&!/^[A-Za-z]{2}$/.test(countryRaw))throw new BadRequestException('Filtro de red inválido.');
+  const country=countryRaw?countryRaw.toUpperCase():undefined;
+  const branches=await this.pool.query<{id:string;name:string;code:string;timezone:string;country_code:string;effective_date:string;today:string}>(`SELECT id,name,code,timezone,country_code,
    (COALESCE(opened_at,created_at) AT TIME ZONE timezone)::date::text AS effective_date,
    (clock_timestamp() AT TIME ZONE timezone)::date::text AS today
-   FROM branches WHERE organization_id=$1 AND status='active' AND ($2::uuid IS NULL OR id=$2)
-   ORDER BY name,id`,[p.organizationId,selected??null]);
+   FROM branches WHERE organization_id=$1 AND status='active' AND ($2::uuid IS NULL OR id=$2) AND ($3::text IS NULL OR country_code=$3)
+   ORDER BY name,id`,[p.organizationId,selected??null,country??null]);
   if(selected&&!branches.rows[0])throw new NotFoundException('Sucursal fuera de la red.');
+  const countries=await this.pool.query<{countryCode:string;branchCount:number}>(`SELECT country_code AS "countryCode",count(*)::integer AS "branchCount"
+   FROM branches WHERE organization_id=$1 AND status='active' GROUP BY country_code ORDER BY country_code`,[p.organizationId]);
   const canInventory=global.includes('inventory.read'),canSales=global.includes('sale.read');
   const [cutSummary,productSummary,inventory,daily]=await Promise.all([
    this.pool.query(`SELECT c.branch_id,count(*) FILTER(WHERE cl.id IS NOT NULL)::integer AS closed,
@@ -170,7 +173,7 @@ export class MetricsService {
    const risk=products.some(x=>x.missingBaselines>0)?'unknown':
     products.some(x=>x.minimumPercent!==null&&new Decimal(x.minimumPercent).lt(x.criticalPercent))?'critical':
     products.some(x=>x.minimumPercent!==null&&new Decimal(x.minimumPercent).lt(x.warningPercent))?'warning':'normal';
-   return {id:b.id,name:b.name,code:b.code,inventoryRisk:products.length?risk:'unknown',
+   return {id:b.id,name:b.name,code:b.code,countryCode:b.country_code,inventoryRisk:products.length?risk:'unknown',
     closedCuts:closure?.closed??0,expectedCuts:activeDays*2,
     lastClosedAt:closure?.last_closed_at??null,
     products:productSummary.rows.filter(x=>x.branch_id===b.id),
@@ -179,7 +182,7 @@ export class MetricsService {
   const closed=byBranch.reduce((n,b)=>n+b.closedCuts,0),expected=byBranch.reduce((n,b)=>n+b.expectedCuts,0);
   const lastSource=[...byBranch.map(x=>x.lastClosedAt),...inventory.rows.map(x=>x.updatedAt)]
    .filter((v):v is string=>!!v).map(v=>new Date(v).toISOString()).sort().at(-1)??null;
-  return {data:{periodDays:days,scopeBranchId:selected??null,activeBranchCount:byBranch.length,
+  return {data:{periodDays:days,scopeBranchId:selected??null,scopeCountryCode:country??null,countries:countries.rows,activeBranchCount:byBranch.length,
    cutCoverage:{closed,expected},branches:byBranch,dailySeries:daily.rows,lastSourceAt:lastSource,
    metricSources:{sales:canSales?'closed_cut_snapshot':null,inventory:canInventory?'current_inventory_ledger':null},
    permissions:{sales:canSales,inventory:canInventory}}};

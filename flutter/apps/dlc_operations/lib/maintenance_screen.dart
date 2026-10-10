@@ -1,4 +1,5 @@
 import 'package:dlc_api/dlc_api.dart';
+import 'app_theme.dart';
 import 'package:flutter/material.dart';
 
 class MaintenanceScreen extends StatefulWidget {
@@ -45,7 +46,7 @@ class _MaintenanceScreenState extends State<MaintenanceScreen> {
     appBar:AppBar(title:const Text('Mantenimiento'),actions:[IconButton(onPressed:_loading?null:_load,tooltip:'Actualizar',icon:const Icon(Icons.refresh))]),
     floatingActionButton:widget.permissions.contains('maintenance.plan')?FloatingActionButton.extended(onPressed:_loading?null:_create,icon:const Icon(Icons.add),label:const Text('Nueva orden')):null,
     body:_loading?const Center(child:CircularProgressIndicator()):RefreshIndicator(onRefresh:_load,child:ListView(padding:const EdgeInsets.all(16),children:[
-      if(_error!=null)Card(color:const Color(0xffffeae5),child:ListTile(leading:const Icon(Icons.error_outline),title:Text(_error!))),
+      if(_error!=null)Card(color:context.dlc.criticalContainer,child:ListTile(leading:const Icon(Icons.error_outline),title:Text(_error!))),
       if(_orders.isEmpty)const Card(child:ListTile(leading:Icon(Icons.build_outlined),title:Text('No hay órdenes de mantenimiento abiertas.'))),
       ..._orders.map((row){final status=_str(row['status']);final asset=_assets.where((a)=>_str(a['id'])==_str(row['assetProfileId'])).firstOrNull;final assetLabel=asset==null?_str(row['assetType']):'${_str(asset['assetType'])} · ${_str(asset['assetCode']??asset['assetId'])}';
         final canWork=widget.permissions.contains('maintenance.work');final actions=<Widget>[];

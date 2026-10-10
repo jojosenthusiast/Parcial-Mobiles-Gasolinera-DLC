@@ -1,3 +1,4 @@
+import { Transform } from 'class-transformer';
 import { IsIn, IsInt, IsObject, IsOptional, IsString, Length, Matches, Max, Min } from 'class-validator';
 
 export const ONBOARDING_STEPS = [
@@ -20,6 +21,12 @@ export class CreateBranchDraftDto {
   @IsString()
   @Length(1, 64)
   timezone!: string;
+
+  @IsOptional()
+  @Transform(({ value }) => typeof value === 'string' ? value.trim().toUpperCase() : value)
+  @IsString()
+  @Matches(/^[A-Z]{2}$/)
+  countryCode?: string;
 
   @IsOptional()
   @IsIn(['academicLab22', 'operational'])

@@ -109,7 +109,7 @@ struct NetworkManagementHomeView: View {
     private func compactMetric(_ title: String, value: String, symbol: String, color: Color) -> some View {
         VStack(alignment: .leading, spacing: 7) {
             Image(systemName: symbol).foregroundStyle(color)
-            Text(value).font(.title2.weight(.bold)).foregroundStyle(DLCTheme.forest)
+            Text(value).font(.title2.weight(.bold)).foregroundStyle(DLCTheme.ink)
             Text(title).font(.caption).foregroundStyle(DLCTheme.muted)
         }
         .frame(maxWidth: .infinity, minHeight: 92, alignment: .leading)
@@ -149,7 +149,7 @@ struct BranchStoreHomeView: View {
                             .font(.headline).foregroundStyle(DLCTheme.red)
                         ForEach(vm.stockAlerts.prefix(3)) { alert in
                             Text("\(alert.product.name): \(alert.quantity) disponibles; mínimo \(alert.product.minimumStock).")
-                                .font(.caption).foregroundStyle(DLCTheme.forest)
+                                .font(.caption).foregroundStyle(DLCTheme.ink)
                         }
                         if !vm.expiredLots.isEmpty {
                             Text("\(vm.expiredLots.count) lote(s) vencido(s) deben retirarse antes de vender.")
@@ -234,7 +234,7 @@ struct OperationsLinkRow: View {
             Image(systemName: symbol).font(.title3).foregroundStyle(DLCTheme.orange)
                 .frame(width: 40, height: 40).background(DLCTheme.orangeBG).clipShape(RoundedRectangle(cornerRadius: 12))
             VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(DLCTheme.forest)
+                Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(DLCTheme.ink)
                 Text(subtitle).font(.caption).foregroundStyle(DLCTheme.muted)
             }
             Spacer(minLength: 2)
@@ -275,11 +275,11 @@ struct ProductCatalogView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             HStack {
                                 VStack(alignment: .leading, spacing: 3) {
-                                    Text(product.name).font(.headline).foregroundStyle(DLCTheme.forest)
+                                    Text(product.name).font(.headline).foregroundStyle(DLCTheme.ink)
                                     Text("\(product.sku) · \(product.category.rawValue)").font(.caption).foregroundStyle(DLCTheme.muted)
                                 }
                                 Spacer()
-                                Text(product.unitPriceCents.moneyUSD).font(.subheadline.weight(.bold)).foregroundStyle(DLCTheme.forest)
+                                Text(product.unitPriceCents.moneyUSD).font(.subheadline.weight(.bold)).foregroundStyle(DLCTheme.ink)
                             }
                             HStack {
                                 Text("Costo \(product.unitCostCents.moneyUSD) · Margen \(product.marginCents.moneyUSD)")
@@ -401,7 +401,7 @@ struct SuppliersListView: View {
                     Button { if canEdit { editingSupplier = supplier } } label: {
                         VStack(alignment: .leading, spacing: 7) {
                             HStack {
-                                Text(supplier.name).font(.headline).foregroundStyle(DLCTheme.forest)
+                                Text(supplier.name).font(.headline).foregroundStyle(DLCTheme.ink)
                                 Spacer()
                                 Text(supplier.isActive ? "Activo" : "Inactivo")
                                     .font(.caption2.weight(.bold)).foregroundStyle(supplier.isActive ? DLCTheme.green : DLCTheme.red)
@@ -529,7 +529,7 @@ struct StoreInventoryView: View {
                         Button { showReceipt = true } label: {
                             Label("Recibir", systemImage: "plus.circle.fill").font(.subheadline.weight(.semibold))
                         }
-                        .buttonStyle(.borderedProminent).tint(DLCTheme.orange)
+                        .buttonStyle(.borderedProminent).tint(DLCTheme.orangeFill)
                     }
                 }
                 if vm.scopedBranches.isEmpty {
@@ -547,13 +547,13 @@ struct StoreInventoryView: View {
                                     HStack(spacing: 9) {
                                         Image(systemName: "shippingbox.fill").foregroundStyle(stock <= product.minimumStock ? DLCTheme.red : DLCTheme.orange)
                                         VStack(alignment: .leading, spacing: 3) {
-                                            Text(product.name).font(.subheadline.weight(.semibold)).foregroundStyle(DLCTheme.forest)
+                                            Text(product.name).font(.subheadline.weight(.semibold)).foregroundStyle(DLCTheme.ink)
                                             Text("\(product.sku) · \(vm.lotCount(branchID: branch.id, productID: product.id)) lotes · mínimo \(product.minimumStock)")
                                                 .font(.caption2).foregroundStyle(DLCTheme.muted)
                                         }
                                         Spacer()
                                         Text("\(stock) \(product.unitName)").font(.subheadline.bold())
-                                            .foregroundStyle(stock <= product.minimumStock ? DLCTheme.red : DLCTheme.forest)
+                                            .foregroundStyle(stock <= product.minimumStock ? DLCTheme.red : DLCTheme.ink)
                                         Image(systemName: "chevron.right").font(.caption.bold()).foregroundStyle(DLCTheme.muted)
                                     }
                                     .padding(12).background(DLCTheme.background).clipShape(RoundedRectangle(cornerRadius: 12))
@@ -613,7 +613,7 @@ private struct StoreLotListView: View {
                         Button { selectedLot = lot } label: {
                             VStack(alignment: .leading, spacing: 7) {
                                 HStack {
-                                    Text(lot.lotCode).font(.headline).foregroundStyle(DLCTheme.forest)
+                                    Text(lot.lotCode).font(.headline).foregroundStyle(DLCTheme.ink)
                                     Spacer()
                                     Text("\(lot.remainingQuantity) \(product.unitName)").font(.subheadline.bold())
                                 }
@@ -863,7 +863,7 @@ struct StorePOSView: View {
     private func categoryChip(_ category: StoreCategory?, title: String) -> some View {
         Button { selectedCategory = category } label: {
             Text(title).font(.caption.weight(.semibold))
-                .foregroundStyle(selectedCategory == category ? Color.white : DLCTheme.forest)
+                .foregroundStyle(selectedCategory == category ? Color.white : DLCTheme.ink)
                 .padding(.horizontal, 12).padding(.vertical, 8)
                 .background(selectedCategory == category ? DLCTheme.forest : DLCTheme.surface)
                 .clipShape(Capsule())
@@ -922,7 +922,7 @@ struct StoreSalesHistoryView: View {
                         Button { selectedSale = sale } label: {
                             HStack {
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text(sale.folio).font(.subheadline.weight(.semibold)).foregroundStyle(DLCTheme.forest)
+                                    Text(sale.folio).font(.subheadline.weight(.semibold)).foregroundStyle(DLCTheme.ink)
                                     Text("\(sale.soldAt.formatted(date: .abbreviated, time: .shortened)) · \(sale.paymentMethod.rawValue) · \(sale.itemCount) artículos")
                                         .font(.caption).foregroundStyle(DLCTheme.muted)
                                     if sale.status == .voided {
@@ -932,7 +932,7 @@ struct StoreSalesHistoryView: View {
                                 }
                                 Spacer()
                                 Text(sale.totalCents.moneyUSD).font(.subheadline.bold())
-                                    .foregroundStyle(sale.status == .completed ? DLCTheme.forest : DLCTheme.muted)
+                                    .foregroundStyle(sale.status == .completed ? DLCTheme.ink : DLCTheme.muted)
                             }
                         }.buttonStyle(.plain).dlcCard()
                     }
@@ -1333,7 +1333,7 @@ struct EquipmentMaintenanceView: View {
                             if vm.fixedBranchID == nil { Text(vm.repository.branch(withID: asset.branchID)?.name ?? "") }
                             Spacer()
                             Button("Editar") { editingAsset = asset }
-                                .font(.caption.weight(.semibold)).foregroundStyle(DLCTheme.forest)
+                                .font(.caption.weight(.semibold)).foregroundStyle(DLCTheme.ink)
                             Button("Orden de trabajo") { selectedAsset = asset }
                                 .font(.caption.weight(.semibold)).foregroundStyle(DLCTheme.orange)
                             Menu("Estado") {
@@ -1358,7 +1358,7 @@ struct EquipmentMaintenanceView: View {
                     Button { selectedOrder = order } label: {
                         VStack(alignment: .leading, spacing: 6) {
                             HStack {
-                                Text(order.title).font(.subheadline.weight(.semibold)).foregroundStyle(DLCTheme.forest)
+                                Text(order.title).font(.subheadline.weight(.semibold)).foregroundStyle(DLCTheme.ink)
                                 Spacer()
                                 Text(order.priority.rawValue).font(.caption.weight(.bold))
                                     .foregroundStyle(order.priority == .urgent || order.priority == .high ? DLCTheme.red : DLCTheme.yellow)

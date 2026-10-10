@@ -1,4 +1,7 @@
 import 'package:dlc_api/dlc_api.dart';
+import 'haptics.dart';
+import 'live_form.dart';
+import 'validators.dart';
 import 'package:flutter/material.dart';
 
 class ContaminationScreen extends StatefulWidget {
@@ -20,17 +23,20 @@ class _ContaminationScreenState extends State<ContaminationScreen> {
  Future<void> loadHistory()async{try{final data=await widget.api.contaminatedDeliveries(widget.branchId,'${widget.order['id']}');if(mounted)setState(()=>history=data);}on DlcApiException catch(e){if(mounted)setState(()=>error=e.message);}}
  Future<void> resolve(Map<String,dynamic> row,bool disposal)async{
   final note=TextEditingController(),measured=TextEditingController(),evidence=TextEditingController();
-  final confirmed=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(title:Text(disposal?'Verificar retiro físico':'Aprobar pérdida del producto entrante'),content:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[
+  String? noteError(String? v)=>minLengthText(v,8,field:disposal?'El detalle':'El motivo');
+  String? measuredError(String? v)=>positiveNumber(v,field:'El volumen retirado',maxDecimals:3);
+  String? evidenceError(String? v)=>minLengthText(v,3,field:'El documento');
+  final confirmed=await showDialog<bool>(context:context,builder:(c)=>ValidatedFormDialog(title:disposal?'Verificar retiro físico':'Aprobar pérdida del producto entrante',submitLabel:'Confirmar',cancelLabel:'Volver',onCancel:()=>Navigator.pop(c,false),onSubmit:()=>Navigator.pop(c,true),isValid:()=>allValid([noteError(note.text),if(disposal)measuredError(measured.text),if(disposal)evidenceError(evidence.text)]),contentBuilder:(c,changed)=>Column(mainAxisSize:MainAxisSize.min,children:[
    Text(disposal?'Las dos pérdidas deben estar aprobadas. Se conserva evidencia de retiro; mantenimiento verificará limpieza antes de liberar.':'USD ${row['incoming_cost_usd']}. La pérdida previa del tanque se aprueba en Incidencias.'),
-   if(disposal)TextField(controller:measured,decoration:const InputDecoration(labelText:'Volumen retirado medido (L)',helperText:'La API registra litros; 1 gal US = 3.785411784 L.')),
-   if(disposal)TextField(controller:evidence,decoration:const InputDecoration(labelText:'Documento de disposición')),
-   TextField(controller:note,maxLines:3,decoration:InputDecoration(labelText:disposal?'Detalle y diferencias de medición':'Motivo de aprobación')),
-  ])),actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:const Text('Volver')),FilledButton(onPressed:()=>Navigator.pop(c,true),child:const Text('Confirmar'))]));
+   if(disposal)LiveTextField(controller:measured,keyboardType:LiveTextField.decimal(),label:'Volumen retirado medido (L)',helper:'La API registra litros; 1 gal US = 3.785411784 L.',validator:measuredError,onChanged:changed),
+   if(disposal)LiveTextField(controller:evidence,label:'Documento de disposición',validator:evidenceError,onChanged:changed),
+   LiveTextField(controller:note,maxLines:3,label:disposal?'Detalle y diferencias de medición':'Motivo de aprobación',validator:noteError,onChanged:changed),
+  ])));
   final body=<String,dynamic>{if(disposal)...{'measuredLiters':measured.text.trim(),'evidenceReference':evidence.text.trim(),'note':note.text.trim()}else 'reason':note.text.trim()};
   note.dispose();measured.dispose();evidence.dispose();if(confirmed!=true||!mounted)return;
   setState(()=>busy=true);
-  try{await widget.api.resolveContamination(widget.branchId,'${row['id']}',disposal?'disposal-verification':'incoming-loss-approval',body);await loadHistory();}
-  on DlcApiException catch(e){if(mounted)setState(()=>error=e.message);}
+  try{await widget.api.resolveContamination(widget.branchId,'${row['id']}',disposal?'disposal-verification':'incoming-loss-approval',body);Haptics.success();await loadHistory();}
+  on DlcApiException catch(e){Haptics.error();if(mounted)setState(()=>error=e.message);}
   finally{if(mounted)setState(()=>busy=false);}
  }
  @override void dispose(){quantity.dispose();document.dispose();description.dispose();super.dispose();}
@@ -41,7 +47,8 @@ class _ContaminationScreenState extends State<ContaminationScreen> {
   finally{if(mounted)setState(()=>busy=false);}
  }
  Future<void> submit()async{
-  if(!(form.currentState?.validate()??false)||preview==null||lineId==null||tankId==null)return;
+  if(!(form.currentState?.validate()??false)){Haptics.error();return;}
+  if(preview==null||lineId==null||tankId==null)return;
   final line=lines.firstWhere((l)=>l['id']==lineId);
   final confirmed=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(title:const Text('Bloquear tanque y registrar descarga'),content:Text('Se registrará SOLO la cantidad realmente descargada: ${quantity.text} ${line['unit']}. El tanque quedará bloqueado. El resto del pedido no se considera perdido.'),actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:const Text('Revisar')),FilledButton(onPressed:()=>Navigator.pop(c,true),child:const Text('Confirmar incidencia'))]));
   if(confirmed!=true||!mounted)return;
@@ -49,11 +56,12 @@ class _ContaminationScreenState extends State<ContaminationScreen> {
   try{final data=await widget.api.reportContamination(widget.branchId,'${widget.order['id']}',{
    'purchaseOrderLineId':lineId,'tankId':tankId,'expectedBalanceVersion':int.parse('${preview!['balanceVersion']}'),
    'actualQuantity':quantity.text.trim(),'unit':line['unit'],'documentReference':document.text.trim(),'description':description.text.trim()});
+   Haptics.critical();
    if(mounted)setState(()=>result=data);
-  }on DlcApiException catch(e){if(mounted)setState(()=>error=e.message);}
+  }on DlcApiException catch(e){Haptics.error();if(mounted)setState(()=>error=e.message);}
   finally{if(mounted)setState(()=>busy=false);}
  }
- @override Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:const Text('Descarga en tanque equivocado')),body:Form(key:form,child:ListView(padding:const EdgeInsets.all(16),children:[
+ @override Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:const Text('Descarga en tanque equivocado')),body:Form(key:form,autovalidateMode:AutovalidateMode.onUserInteraction,child:ListView(padding:const EdgeInsets.all(16),children:[
   const Card(child:Padding(padding:EdgeInsets.all(12),child:Text('Detén la descarga y aplica el protocolo de seguridad de la estación. Este registro bloquea el tanque; no certifica limpieza ni retiro.'))),
   if(error!=null)Text(error!,style:TextStyle(color:Theme.of(context).colorScheme.error)),
   if(result==null)...[

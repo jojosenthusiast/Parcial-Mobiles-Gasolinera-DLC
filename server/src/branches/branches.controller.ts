@@ -11,14 +11,15 @@ export class BranchesController {
   @RequirePermission('branch.read')
   @Get()
   list(@Query('query') query: string | undefined, @Query('status') status: string | undefined, @Query('branchId') branchId: string | undefined,
-    @Query('cursor') cursor: string | undefined, @Query('limit') limit: string | undefined, @Req() request: Request) {
+    @Query('countryCode') countryCode: string | undefined, @Query('cursor') cursor: string | undefined, @Query('limit') limit: string | undefined, @Req() request: Request) {
     if (query && query.length > 100) throw new BadRequestException('query no puede superar 100 caracteres.');
     if (status && !['draft','configured','active','suspended','archived'].includes(status)) throw new BadRequestException('status no es válido.');
     if (branchId && !isUuid(branchId)) throw new BadRequestException('branchId debe ser UUID.');
+    if (countryCode && !/^[A-Za-z]{2}$/.test(countryCode)) throw new BadRequestException('countryCode debe ser un código ISO 3166-1 alpha-2.');
     if (cursor && !isUuid(cursor)) throw new BadRequestException('cursor debe ser UUID.');
     const parsedLimit = limit === undefined ? 50 : Number(limit);
     if (!Number.isInteger(parsedLimit) || parsedLimit < 1 || parsedLimit > 100) throw new BadRequestException('limit debe estar entre 1 y 100.');
-    return this.branches.list(request.principal!, { limit: parsedLimit, ...(query !== undefined ? { query } : {}), ...(status !== undefined ? { status } : {}), ...(branchId ? { branchId } : {}), ...(cursor ? { cursor } : {}) });
+    return this.branches.list(request.principal!, { limit: parsedLimit, ...(query !== undefined ? { query } : {}), ...(status !== undefined ? { status } : {}), ...(branchId ? { branchId } : {}), ...(countryCode ? { countryCode: countryCode.toUpperCase() } : {}), ...(cursor ? { cursor } : {}) });
   }
 
   @RequirePermission('branch.manage')

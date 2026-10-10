@@ -173,7 +173,7 @@ struct RemoteBranchesDirectoryView: View {
                             } label: {
                                 Text(filter.rawValue)
                                     .font(.caption.weight(.semibold))
-                                    .foregroundStyle(vm.filter == filter ? Color.white : DLCTheme.forest)
+                                    .foregroundStyle(vm.filter == filter ? Color.white : DLCTheme.ink)
                                     .padding(.horizontal, 12).padding(.vertical, 9)
                                     .background(vm.filter == filter ? DLCTheme.forest : DLCTheme.surface)
                                     .clipShape(Capsule())
@@ -221,7 +221,7 @@ struct RemoteBranchesDirectoryView: View {
                                         Image(systemName: "building.2.fill").font(.title3).foregroundStyle(DLCTheme.orange)
                                         VStack(alignment: .leading, spacing: 5) {
                                             Text("\(branch.name) · \(branch.code)")
-                                                .font(.headline).foregroundStyle(DLCTheme.forest)
+                                                .font(.headline).foregroundStyle(DLCTheme.ink)
                                             Text("\(branch.zone.capitalized) · actualizada \(branch.updatedAt.formatted(date: .abbreviated, time: .shortened))")
                                                 .font(.caption).foregroundStyle(DLCTheme.muted)
                                         }
@@ -408,7 +408,7 @@ private struct RemoteBranchOnboardingView: View {
                 if isSaving { ProgressView().frame(maxWidth: .infinity) }
                 else { Label("Crear borrador", systemImage: "plus.circle.fill").frame(maxWidth: .infinity) }
             }
-            .buttonStyle(.borderedProminent).tint(DLCTheme.orange)
+            .buttonStyle(.borderedProminent).tint(DLCTheme.orangeFill)
             .disabled(isSaving || !canManageBranches)
         }
         .padding(16).dlcCard()
@@ -457,7 +457,7 @@ private struct RemoteBranchOnboardingView: View {
                 Button { confirmActivation = true } label: {
                     Label("Activar sucursal", systemImage: "checkmark.seal.fill").frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.borderedProminent).tint(DLCTheme.green).disabled(isSaving)
+                .buttonStyle(.borderedProminent).tint(DLCTheme.greenFill).disabled(isSaving)
             } else if readiness.canActivate && branch.status != "draft" {
                 Label("Sucursal activa", systemImage: "checkmark.seal.fill").foregroundStyle(DLCTheme.green).dlcCard()
             }
@@ -653,7 +653,7 @@ private struct RemoteFuelOfferSetupView: View {
                 if !errorMessage.isEmpty { Label(errorMessage, systemImage: "exclamationmark.triangle.fill").font(.footnote).foregroundStyle(DLCTheme.red).dlcCard(color: DLCTheme.orangeBG) }
                 if canManageBranches {
                     Button { showCreateProduct = true } label: { Label("Crear producto de combustible", systemImage: "plus.circle.fill").frame(maxWidth: .infinity) }
-                        .buttonStyle(.borderedProminent).tint(DLCTheme.orange)
+                        .buttonStyle(.borderedProminent).tint(DLCTheme.orangeFill)
                 }
                 if isLoading && products.isEmpty { ProgressView("Cargando combustibles…").frame(maxWidth: .infinity).padding(20) }
                 ForEach(products) { product in
@@ -715,7 +715,7 @@ private struct RemoteFuelOfferSetupView: View {
     }
 
     private func productIcon(_ family: String) -> String { family == "diesel" ? "drop.fill" : "fuelpump.fill" }
-    private func fuelColor(_ family: String) -> Color { family == "diesel" ? DLCTheme.forest : (family == "super" ? DLCTheme.orange : DLCTheme.red) }
+    private func fuelColor(_ family: String) -> Color { family == "diesel" ? DLCTheme.ink : (family == "super" ? DLCTheme.orange : DLCTheme.red) }
 }
 
 private struct RemoteFuelProductCreateView: View {
@@ -775,7 +775,7 @@ private struct RemoteBranchStaffSetupView: View {
                     .font(.headline).padding(14).frame(maxWidth: .infinity, alignment: .leading).dlcCard(color: DLCTheme.orangeBG)
                 if canManageStaff {
                     Button { showCreateEmployee = true } label: { Label("Agregar persona", systemImage: "person.badge.plus").frame(maxWidth: .infinity) }
-                        .buttonStyle(.borderedProminent).tint(DLCTheme.orange)
+                        .buttonStyle(.borderedProminent).tint(DLCTheme.orangeFill)
                 }
                 if !errorMessage.isEmpty { Label(errorMessage, systemImage: "exclamationmark.triangle.fill").font(.footnote).foregroundStyle(DLCTheme.red).dlcCard(color: DLCTheme.orangeBG) }
                 ForEach(employees) { employee in
@@ -867,7 +867,7 @@ private struct RemoteBranchPriceSetupView: View {
                 if !errorMessage.isEmpty { Label(errorMessage, systemImage: "exclamationmark.triangle.fill").font(.footnote).foregroundStyle(DLCTheme.red).dlcCard(color: DLCTheme.orangeBG) }
                 if canProposePrices && canReadFuel && canReadInfrastructure {
                     Button { showProposalForm = true } label: { Label("Proponer precio", systemImage: "plus.circle.fill").frame(maxWidth: .infinity) }
-                        .buttonStyle(.borderedProminent).tint(DLCTheme.orange)
+                        .buttonStyle(.borderedProminent).tint(DLCTheme.orangeFill)
                 } else if canProposePrices {
                     Label("Para proponer precios también se requiere lectura del catálogo y de la configuración de la sucursal.", systemImage: "lock.fill")
                         .font(.caption).foregroundStyle(DLCTheme.muted).dlcCard(color: DLCTheme.orangeBG)
@@ -1139,7 +1139,7 @@ struct BranchCard: View {
                     .fontWeight(.semibold)
             }
             .font(.caption)
-            .foregroundStyle(DLCTheme.forest)
+            .foregroundStyle(DLCTheme.ink)
 
             ForEach(branch.tanks) { tank in
                 HStack(spacing: 8) {
@@ -1224,7 +1224,7 @@ struct RemoteTanksDirectoryView: View {
                             } label: {
                                 Text(filter.rawValue)
                                     .font(.caption.weight(.semibold))
-                                    .foregroundStyle(vm.filter == filter ? Color.white : DLCTheme.forest)
+                                    .foregroundStyle(vm.filter == filter ? Color.white : DLCTheme.ink)
                                     .padding(.horizontal, 12).padding(.vertical, 9)
                                     .background(vm.filter == filter ? DLCTheme.forest : DLCTheme.surface)
                                     .clipShape(Capsule())
@@ -1263,7 +1263,7 @@ struct RemoteTanksDirectoryView: View {
                                     Image(systemName: "drop.fill").font(.title3).foregroundStyle(DLCTheme.blue)
                                     VStack(alignment: .leading, spacing: 5) {
                                         Text("\(tank.name ?? "Tanque \(tank.code)") · \(tank.fuelName)")
-                                            .font(.headline).foregroundStyle(DLCTheme.forest)
+                                            .font(.headline).foregroundStyle(DLCTheme.ink)
                                         Text("\(tank.code) · capacidad \(tank.nominalCapacityL) L")
                                             .font(.caption).foregroundStyle(DLCTheme.muted)
                                     }

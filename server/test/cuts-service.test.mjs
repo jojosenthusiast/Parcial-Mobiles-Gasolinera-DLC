@@ -9,10 +9,11 @@ source=['BadRequestException','ConflictException','ForbiddenException','NotFound
 const {CutsService}=await import('data:text/javascript;base64,'+Buffer.from(stripTypeScriptTypes(source,{mode:'transform'})).toString('base64'));
 const id='11111111-1111-4111-8111-111111111111';
 function fixture(){
- const calls=[];let timezone='America/El_Salvador',reviewRequired=true,autoEnabled=false;
+ const calls=[];let timezone='America/El_Salvador',reviewRequired=true,autoEnabled=false,template='operational';
  const query=async(sql,values)=>{
   calls.push({sql,values});
   if(sql.startsWith('SELECT timezone FROM branches'))return {rows:timezone?[{timezone}]:[]};
+  if(sql.startsWith('SELECT profile FROM branch_operating_profiles'))return {rows:template?[{profile:template}]:[]};
   if(sql.startsWith('SELECT cut_id,slot'))return {rows:[
    {cut_id:id,slot:1,starts_at:new Date('2026-10-07T12:00:00Z'),ends_at:new Date('2026-10-07T20:00:00Z')},
    {cut_id:id,slot:2,starts_at:new Date('2026-10-07T20:00:00Z'),ends_at:new Date('2026-10-08T12:00:00Z')}
@@ -43,7 +44,7 @@ function fixture(){
  const pool={query,connect:async()=>({query,release(){}})};
  const permissions=['cut.read','cut.capture','cut.submit','cut.close','branch.manage'];
  const service=new CutsService(pool,{capabilities:async()=>permissions},{appendTransaction:async()=>{}});
- return {service,calls,permissions,p:{organizationId:id,userId:id},setTimezone:x=>{timezone=x},setAutomatic:(review,enabled)=>{reviewRequired=review;autoEnabled=enabled}};
+ return {service,calls,permissions,p:{organizationId:id,userId:id},setTimezone:x=>{timezone=x},setTemplate:x=>{template=x},setAutomatic:(review,enabled)=>{reviewRequired=review;autoEnabled=enabled}};
 }
 
 test('generates only the requested branch and date and returns two contiguous windows',async()=>{
@@ -62,6 +63,32 @@ test('profile requires distinct valid local times and captures explicit timezone
  const result=await f.service.createProfile(id,f.p,{effectiveDate:'2026-10-07',dayStart:'22:00',splitAt:'06:00'},id);
  assert.equal(result.data.timezone,'America/El_Salvador');
  assert.deepEqual(f.calls.find(x=>x.sql.startsWith('INSERT INTO operational_cut_profiles')).values.slice(2,6),['2026-10-07','22:00','06:00','America/El_Salvador']);
+});
+test('academicLab22 profile defaults to morning 06:00-14:00 and evening 14:00-22:00 with 22:00-06:00 outside any cut',async()=>{
+ const f=fixture();f.setTemplate('academicLab22');
+ const result=await f.service.createProfile(id,f.p,{effectiveDate:'2026-10-07'},id);
+ assert.deepEqual([result.data.dayStart,result.data.splitAt,result.data.dayEnd],['06:00','14:00','22:00']);
+ const insert=f.calls.find(x=>x.sql.startsWith('INSERT INTO operational_cut_profiles'));
+ assert.deepEqual(insert.values.slice(2,6),['2026-10-07','06:00','14:00','America/El_Salvador']);assert.equal(insert.values[7],'22:00');
+ const explicit=await f.service.createProfile(id,f.p,{effectiveDate:'2026-10-08',dayStart:'06:00',splitAt:'14:00',dayEnd:'22:00'},id);
+ assert.equal(explicit.data.dayEnd,'22:00');
+ for(const bad of [{dayStart:'22:00',splitAt:'06:00'},{dayStart:'06:00',splitAt:'14:00',dayEnd:'23:00'},{dayStart:'06:00',splitAt:'14:00',dayEnd:'06:00'}])
+  await assert.rejects(f.service.createProfile(id,f.p,{effectiveDate:'2026-10-09',...bad},id),/cortes fijos/);
+});
+test('other templates keep two 24-hour-covering windows and cannot declare a non-cut period',async()=>{
+ const f=fixture();
+ await assert.rejects(f.service.createProfile(id,f.p,{effectiveDate:'2026-10-07',dayStart:'06:00',splitAt:'14:00',dayEnd:'22:00'},id),/Solo el perfil académico/);
+ await assert.rejects(f.service.createProfile(id,f.p,{effectiveDate:'2026-10-07'},id),/dos horarios distintos/);
+ const result=await f.service.createProfile(id,f.p,{effectiveDate:'2026-10-07',dayStart:'06:00',splitAt:'14:00'},id);
+ assert.equal(result.data.dayEnd,null);
+ assert.equal(f.calls.find(x=>x.sql.startsWith('INSERT INTO operational_cut_profiles')).values[7],null);
+ const g=fixture();g.setTemplate(null);
+ assert.equal((await g.service.createProfile(id,g.p,{effectiveDate:'2026-10-07',dayStart:'22:00',splitAt:'06:00'},id)).data.dayEnd,null);
+});
+test('progress reconciles from the previous cut end so the non-cut period is not lost',async()=>{
+ const f=fixture();await f.service.progress(id,id,f.p);
+ const q=f.calls.find(x=>x.sql.startsWith('SELECT id,status,version'));
+ assert.match(q.sql,/previous_operational_cut\(operational_cuts\.id\)/);assert.match(q.sql,/AS "accountingStartsAt"/);
 });
 test('opening freezes a variable asset set with optimistic version and audit in one transaction',async()=>{
  const f=fixture();const result=await f.service.open(id,id,f.p,{expectedVersion:1},id);

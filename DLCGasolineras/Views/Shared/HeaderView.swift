@@ -8,6 +8,7 @@ struct HeaderView: View {
             LogoView()
             Spacer()
             VStack(alignment: .trailing, spacing: 6) {
+                AppearancePicker()
                 Text(role).foregroundStyle(DLCTheme.muted)
                 if let location { Text(location).bold().foregroundStyle(DLCTheme.muted) }
             }.font(.subheadline)
@@ -64,8 +65,8 @@ struct AccountView: View {
                                     .frame(maxWidth: .infinity)
                             }
                             .padding(.vertical, 13)
-                            .foregroundStyle(DLCTheme.forest)
-                            .background(DLCTheme.cream)
+                            .foregroundStyle(DLCTheme.ink)
+                            .background(DLCTheme.background)
                             .clipShape(RoundedRectangle(cornerRadius: 13))
                         }
                         if let exportError {

@@ -284,7 +284,7 @@
           "branches"
         ],
         "operationId": "listBranches",
-        "summary": "Lista sucursales visibles con filtros y cursor",
+        "summary": "Lista sucursales visibles con filtros y cursor; cada sucursal incluye countryCode",
         "security": [
           {
             "bearerAuth": []
@@ -343,6 +343,16 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "countryCode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z]{2}$"
+            },
+            "description": "Restringe a sucursales de ese país (ISO 3166-1 alpha-2, no distingue mayúsculas)."
           },
           {
             "name": "cursor",
@@ -1729,6 +1739,7 @@
         ],
         "operationId": "createCutProfile",
         "summary": "Configurar horarios explícitos de dos cortes desde una fecha",
+        "description": "Define dos ventanas por día en la zona horaria de la sucursal. Sin dayEnd la segunda ventana llega hasta el siguiente dayStart (dos ventanas contiguas de 24 h). Con dayEnd, el periodo dayEnd–siguiente dayStart NO es un corte: las ventas, lecturas y movimientos de ese periodo no pertenecen a ninguna ventana y se concilian en el primer corte posterior (accountingStartsAt), manteniendo la continuidad de totalizadores y tanques. El perfil académico (academicLab22) es fijo: matutino 06:00-14:00 y vespertino 14:00-22:00; si se omiten los horarios se aplican esos valores y cualquier otro valor se rechaza con 400. Otros perfiles no aceptan dayEnd.",
         "security": [
           {
             "bearerAuth": []
@@ -1752,9 +1763,7 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "effectiveDate",
-                  "dayStart",
-                  "splitAt"
+                  "effectiveDate"
                 ],
                 "properties": {
                   "effectiveDate": {
@@ -1763,11 +1772,21 @@
                   },
                   "dayStart": {
                     "type": "string",
+                    "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+                    "description": "Inicio local de la primera ventana. Obligatorio salvo en academicLab22 (06:00).",
                     "example": "06:00"
                   },
                   "splitAt": {
                     "type": "string",
+                    "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+                    "description": "Límite local entre la primera y la segunda ventana. Obligatorio salvo en academicLab22 (14:00).",
                     "example": "14:00"
+                  },
+                  "dayEnd": {
+                    "type": "string",
+                    "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+                    "description": "Fin local de la segunda ventana; el periodo hasta el siguiente dayStart no es un corte. Solo academicLab22 (22:00).",
+                    "example": "22:00"
                   }
                 }
               }
@@ -14409,7 +14428,7 @@
           "customers"
         ],
         "operationId": "activeCustomerBranches",
-        "summary": "Lista sucursales activas visibles a Clientes.",
+        "summary": "Lista sucursales activas visibles a Clientes. Incluye countryCode.",
         "responses": {
           "200": {
             "description": "Resultado"
@@ -15368,7 +15387,34 @@
                   "properties": {
                     "data": {
                       "type": "object",
-                      "additionalProperties": true
+                      "additionalProperties": true,
+                      "properties": {
+                        "branch": {
+                          "type": "object",
+                          "additionalProperties": true,
+                          "required": [
+                            "id",
+                            "name",
+                            "timezone",
+                            "countryCode"
+                          ],
+                          "properties": {
+                            "id": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "name": {
+                              "type": "string"
+                            },
+                            "timezone": {
+                              "type": "string"
+                            },
+                            "countryCode": {
+                              "$ref": "#/components/schemas/CountryCode"
+                            }
+                          }
+                        }
+                      }
                     }
                   },
                   "required": [
@@ -15516,6 +15562,16 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "countryCode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z]{2}$"
+            },
+            "description": "Restringe el consolidado a sucursales de ese país (ISO 3166-1 alpha-2, no distingue mayúsculas); se combina con branchId."
           }
         ],
         "responses": {
@@ -15528,7 +15584,66 @@
                   "properties": {
                     "data": {
                       "type": "object",
-                      "additionalProperties": true
+                      "additionalProperties": true,
+                      "properties": {
+                        "scopeBranchId": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "format": "uuid"
+                        },
+                        "scopeCountryCode": {
+                          "oneOf": [
+                            {
+                              "$ref": "#/components/schemas/CountryCode"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "description": "País aplicado como filtro; null si no se filtró."
+                        },
+                        "countries": {
+                          "type": "array",
+                          "description": "Países distintos de las sucursales activas visibles para quien consulta, independientes de los filtros.",
+                          "items": {
+                            "$ref": "#/components/schemas/NetworkCountrySummary"
+                          }
+                        },
+                        "branches": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true,
+                            "required": [
+                              "id",
+                              "name",
+                              "code",
+                              "countryCode"
+                            ],
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "code": {
+                                "type": "string"
+                              },
+                              "countryCode": {
+                                "$ref": "#/components/schemas/CountryCode"
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "required": [
+                        "countries",
+                        "branches"
+                      ]
                     }
                   },
                   "required": [
@@ -18418,6 +18533,12 @@
             "minLength": 1,
             "maxLength": 64
           },
+          "countryCode": {
+            "type": "string",
+            "pattern": "^[A-Za-z]{2}$",
+            "default": "SV",
+            "description": "ISO 3166-1 alpha-2; se normaliza a mayúsculas. Por defecto SV. zone solo aplica a El Salvador; other sigue siendo válido."
+          },
           "profile": {
             "type": "string",
             "enum": [
@@ -18461,7 +18582,7 @@
           },
           "data": {
             "type": "object",
-            "description": "JSON de hasta 256 KiB. Para staff: status confirmed/deferred y employeeCount entero; confirmed requiere al menos un empleado activo."
+            "description": "JSON de hasta 256 KiB. Para staff: status confirmed/deferred y employeeCount entero; confirmed requiere al menos un empleado activo. Paso identity: code, name, zone, timezone y countryCode (ISO 3166-1 alpha-2, se normaliza a mayúsculas)."
           }
         }
       },
@@ -21748,6 +21869,11 @@
           },
           "version": {
             "type": "integer"
+          },
+          "accountingStartsAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Inicio de la conciliación del corte: fin del corte anterior cuando hay un periodo sin corte (22:00-06:00 en academicLab22); si no, igual a startsAt. Solo en el progreso del corte."
           }
         }
       },
@@ -24191,6 +24317,30 @@
             "type": "string",
             "minLength": 8,
             "maxLength": 500
+          }
+        }
+      },
+      "CountryCode": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}$",
+        "minLength": 2,
+        "maxLength": 2,
+        "description": "Código de país ISO 3166-1 alpha-2 en mayúsculas (por ejemplo SV). Las sucursales existentes son SV."
+      },
+      "NetworkCountrySummary": {
+        "type": "object",
+        "required": [
+          "countryCode",
+          "branchCount"
+        ],
+        "properties": {
+          "countryCode": {
+            "$ref": "#/components/schemas/CountryCode"
+          },
+          "branchCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Sucursales activas del país visibles para quien consulta."
           }
         }
       }

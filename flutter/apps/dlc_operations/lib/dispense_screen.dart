@@ -1,7 +1,11 @@
 import 'package:dlc_api/dlc_api.dart';
+import 'app_theme.dart';
 import 'package:flutter/material.dart';
 
 import 'customer_qr_scanner_screen.dart';
+import 'haptics.dart';
+import 'live_form.dart';
+import 'validators.dart';
 
 class DispenseScreen extends StatefulWidget {
   const DispenseScreen({
@@ -64,9 +68,14 @@ class _DispenseScreenState extends State<DispenseScreen> {
     final value = await showDialog<(String, String, String)>(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialog) => AlertDialog(
-          title: const Text('Autorizar despacho'),
-          content: Column(
+        builder: (ctx, setDialog) => ValidatedFormDialog(
+          title: 'Autorizar despacho',
+          submitLabel: 'Autorizar',
+          cancelLabel: 'Volver',
+          onCancel: () => Navigator.pop(ctx),
+          onSubmit: () => Navigator.pop(ctx, (mode, unit, c.text.trim())),
+          isValid: () => positiveNumber(c.text, field: 'El valor') == null,
+          contentBuilder: (ctx, changed) => Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               DropdownButtonFormField<String>(
@@ -79,7 +88,11 @@ class _DispenseScreenState extends State<DispenseScreen> {
                     child: Text('Dinero (USD)'),
                   ),
                 ],
-                onChanged: (v) => setDialog(() => mode = v ?? mode),
+                onChanged: (v) {
+                  Haptics.selection();
+                  setDialog(() => mode = v ?? mode);
+                  changed();
+                },
               ),
               if (mode == 'volume')
                 DropdownButtonFormField<String>(
@@ -92,20 +105,26 @@ class _DispenseScreenState extends State<DispenseScreen> {
                       child: Text('Galones (EE. UU.)'),
                     ),
                   ],
-                  onChanged: (v) => setDialog(() => unit = v ?? unit),
+                  onChanged: (v) {
+                    Haptics.selection();
+                    setDialog(() => unit = v ?? unit);
+                    changed();
+                  },
                 ),
-              TextField(
+              LiveTextField(
                 controller: c,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
+                keyboardType: LiveTextField.decimal(),
+                label: mode == 'amount'
+                    ? 'Monto objetivo (USD)'
+                    : unit == 'liter'
+                    ? 'Volumen máximo (litros)'
+                    : 'Volumen máximo (galones)',
+                validator: (v) => positiveNumber(
+                  v,
+                  field: mode == 'amount' ? 'El monto' : 'El volumen',
+                  maxDecimals: mode == 'amount' ? 2 : 3,
                 ),
-                decoration: InputDecoration(
-                  labelText: mode == 'amount'
-                      ? 'Monto objetivo (USD)'
-                      : unit == 'liter'
-                      ? 'Volumen máximo (litros)'
-                      : 'Volumen máximo (galones)',
-                ),
+                onChanged: changed,
               ),
               if (mode == 'amount')
                 Text(
@@ -117,16 +136,6 @@ class _DispenseScreenState extends State<DispenseScreen> {
                 ),
             ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Volver'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, (mode, unit, c.text.trim())),
-              child: const Text('Autorizar'),
-            ),
-          ],
         ),
       ),
     );
@@ -163,44 +172,49 @@ class _DispenseScreenState extends State<DispenseScreen> {
       text: _str(row['progressLiters'] ?? row['progressL']),
     );
     final document = TextEditingController();
+    final reserved = double.tryParse(
+      _str(row['reservedLiters'] ?? row['reservedL']),
+    );
+    final started = double.tryParse(_str(row['startLiters'] ?? '')) ?? 0;
+    String? finalReadingError(String? v) => finalNotBelowInitial(
+      v,
+      started,
+      field: 'La lectura final',
+    ) ?? (reserved != null && parseDecimal(v)! > reserved
+        ? 'La lectura final no puede superar lo autorizado ($reserved L).'
+        : null);
     final result = await showDialog<(String, String)>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Registrar despacho completado'),
-        content: Column(
+      builder: (ctx) => ValidatedFormDialog(
+        title: 'Registrar despacho completado',
+        submitLabel: 'Completar',
+        cancelLabel: 'Volver',
+        onCancel: () => Navigator.pop(ctx),
+        onSubmit: () =>
+            Navigator.pop(ctx, (amount.text.trim(), document.text.trim())),
+        isValid: () => finalReadingError(amount.text) == null,
+        contentBuilder: (ctx, changed) => Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
               'Autorizado hasta ${_str(row['reservedLiters'] ?? row['reservedL'])} L',
             ),
-            TextField(
+            LiveTextField(
               controller: amount,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              decoration: const InputDecoration(
-                labelText: 'Lectura final validada (litros)',
-              ),
+              keyboardType: LiveTextField.decimal(),
+              label: 'Lectura final validada (litros)',
+              validator: finalReadingError,
+              onChanged: changed,
             ),
-            TextField(
+            LiveTextField(
               controller: document,
-              decoration: const InputDecoration(
-                labelText: 'Documento/lectura (opcional)',
-              ),
+              label: 'Documento/lectura (opcional)',
+              maxLength: 120,
+              validator: (v) => maxLengthText(v, 120, field: 'El documento'),
+              onChanged: changed,
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Volver'),
-          ),
-          FilledButton(
-            onPressed: () =>
-                Navigator.pop(ctx, (amount.text.trim(), document.text.trim())),
-            child: const Text('Completar'),
-          ),
-        ],
       ),
     );
     amount.dispose();
@@ -298,8 +312,10 @@ class _DispenseScreenState extends State<DispenseScreen> {
     _error = null;
     try {
       await fn();
+      Haptics.success();
       await _load();
     } on DlcApiException catch (e) {
+      Haptics.error();
       if (mounted) setState(() => _error = e.message);
       await _load();
     }
@@ -329,7 +345,7 @@ class _DispenseScreenState extends State<DispenseScreen> {
                 children: [
                   if (_error != null)
                     Card(
-                      color: const Color(0xffffeae5),
+                      color: context.dlc.criticalContainer,
                       child: ListTile(
                         leading: const Icon(Icons.error_outline),
                         title: Text(_error!),

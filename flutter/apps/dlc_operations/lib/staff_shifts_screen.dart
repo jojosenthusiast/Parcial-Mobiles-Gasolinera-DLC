@@ -1,4 +1,8 @@
 import 'package:dlc_api/dlc_api.dart';
+import 'haptics.dart';
+import 'live_form.dart';
+import 'validators.dart';
+import 'app_theme.dart';
 import 'package:flutter/material.dart';
 
 class StaffShiftsScreen extends StatefulWidget {
@@ -44,45 +48,56 @@ class _StaffShiftsScreenState extends State<StaffShiftsScreen> {
       await widget.api.scheduleStaffShift(widget.branchId, employeeId: selection.employeeId,
         position: selection.position, startsAt: selection.startsAt, endsAt: selection.endsAt);
       await load();
-    } on DlcApiException catch (e) { if (mounted) setState(() { error = e.message; loading = false; }); }
+    } on DlcApiException catch (e) { Haptics.error(); if (mounted) setState(() { error = e.message; loading = false; }); }
   }
 
   Future<void> _cancel(Map<String, dynamic> shift) async {
     final controller = TextEditingController();
-    final reason = await showDialog<String>(context: context, builder: (context) => AlertDialog(
-      title: const Text('Cancelar turno'), content: TextField(controller: controller, minLines: 2, maxLines: 4, maxLength: 500, decoration: const InputDecoration(labelText: 'Motivo (mínimo 10 caracteres)')),
-      actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Volver')), FilledButton(onPressed: () => Navigator.pop(context, controller.text.trim()), child: const Text('Cancelar turno'))],
+    String? reasonError(String? v) => minLengthText(v, 10, field: 'El motivo');
+    final reason = await showDialog<String>(context: context, builder: (context) => ValidatedFormDialog(
+      title: 'Cancelar turno', submitLabel: 'Cancelar turno', cancelLabel: 'Volver',
+      onCancel: () => Navigator.pop(context), onSubmit: () => Navigator.pop(context, controller.text.trim()),
+      isValid: () => reasonError(controller.text) == null,
+      contentBuilder: (context, changed) => LiveTextField(controller: controller, minLines: 2, maxLines: 4, maxLength: 500, label: 'Motivo (mínimo 10 caracteres)', validator: reasonError, onChanged: changed),
     ));
     controller.dispose();
     if (reason == null || !mounted) return;
     setState(() { loading = true; error = null; });
     try { await widget.api.cancelStaffShift(widget.branchId, _str(shift['id']), reason); await load(); }
-    on DlcApiException catch (e) { if (mounted) setState(() { error = e.message; loading = false; }); }
+    on DlcApiException catch (e) { Haptics.error(); if (mounted) setState(() { error = e.message; loading = false; }); }
   }
 
   Future<void> _recordAttendance(Map<String, dynamic> shift, String kind) async {
     setState(() { loading = true; error = null; });
     try { await widget.api.recordStaffAttendance(widget.branchId, _str(shift['id']), kind); await load(); }
-    on DlcApiException catch (e) { if (mounted) setState(() { error = e.message; loading = false; }); }
+    on DlcApiException catch (e) { Haptics.error(); if (mounted) setState(() { error = e.message; loading = false; }); }
   }
 
   Future<void> _createEmployee() async {
     final code = TextEditingController(), name = TextEditingController(), position = TextEditingController(), email = TextEditingController();
-    final ok = await showDialog<bool>(context: context, builder: (context) => AlertDialog(
-      title: const Text('Registrar empleado'), content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        TextField(controller: code, decoration: const InputDecoration(labelText: 'Código de empleado')),
-        const SizedBox(height: 8), TextField(controller: name, decoration: const InputDecoration(labelText: 'Nombre legal')),
-        const SizedBox(height: 8), TextField(controller: position, decoration: const InputDecoration(labelText: 'Puesto')),
-        const SizedBox(height: 8), TextField(controller: email, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Correo (opcional)')),
-      ])), actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Volver')), FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Guardar'))],
+    String? codeError(String? v) => requiredText(v, field: 'El código') ?? maxLengthText(v, 24, field: 'El código');
+    String? nameError(String? v) => personName(v, field: 'El nombre');
+    String? positionError(String? v) => minLengthText(v, 3, field: 'El puesto');
+    String? emailError(String? v) => (v == null || v.trim().isEmpty) ? null : emailAddress(v);
+    final ok = await showDialog<bool>(context: context, builder: (context) => ValidatedFormDialog(
+      title: 'Registrar empleado', submitLabel: 'Guardar', cancelLabel: 'Volver',
+      onCancel: () => Navigator.pop(context, false), onSubmit: () => Navigator.pop(context, true),
+      isValid: () => allValid([codeError(code.text), nameError(name.text), positionError(position.text), emailError(email.text)]),
+      contentBuilder: (context, changed) => Column(mainAxisSize: MainAxisSize.min, children: [
+        LiveTextField(controller: code, label: 'Código de empleado', maxLength: 24, validator: codeError, onChanged: changed),
+        LiveTextField(controller: name, label: 'Nombre legal', validator: nameError, onChanged: changed),
+        LiveTextField(controller: position, label: 'Puesto', validator: positionError, onChanged: changed),
+        LiveTextField(controller: email, keyboardType: TextInputType.emailAddress, label: 'Correo (opcional)', validator: emailError, onChanged: changed),
+      ]),
     ));
     if (ok != true || !mounted) { code.dispose(); name.dispose(); position.dispose(); email.dispose(); return; }
     setState(() { loading = true; error = null; });
     try {
       await widget.api.createStaffEmployee(widget.branchId, employeeCode: code.text, legalName: name.text,
         positionTitle: position.text, contactEmail: email.text);
+      Haptics.success();
       await load();
-    } on DlcApiException catch (e) { if (mounted) setState(() { error = e.message; loading = false; }); }
+    } on DlcApiException catch (e) { Haptics.error(); if (mounted) setState(() { error = e.message; loading = false; }); }
     finally { code.dispose(); name.dispose(); position.dispose(); email.dispose(); }
   }
 
@@ -95,7 +110,7 @@ class _StaffShiftsScreenState extends State<StaffShiftsScreen> {
       IconButton(onPressed: load, tooltip: 'Actualizar', icon: const Icon(Icons.refresh))]),
     floatingActionButton: canPlan ? FloatingActionButton.extended(onPressed: loading ? null : _schedule, icon: const Icon(Icons.add), label: const Text('Programar turno')) : null,
     body: loading ? const Center(child: CircularProgressIndicator()) : RefreshIndicator(onRefresh: load, child: ListView(padding: const EdgeInsets.all(16), children: [
-      if (error != null) Card(color: const Color(0xffffeae5), child: ListTile(leading: const Icon(Icons.error_outline), title: Text(error!))),
+      if (error != null) Card(color: context.dlc.criticalContainer, child: ListTile(leading: const Icon(Icons.error_outline), title: Text(error!))),
       Card(child: ListTile(leading: const Icon(Icons.groups_outlined), title: Text('${employees.length} empleados activos'), subtitle: const Text('La lista y la programación se consultan al servidor.'))),
       const SizedBox(height: 14),
       Text('Turnos · próximos 7 días', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),

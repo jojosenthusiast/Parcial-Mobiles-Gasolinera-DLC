@@ -16,8 +16,8 @@ export class MetricsController {
   return this.metrics.setInventoryPolicy(id,req.principal!,body,req.header('x-request-id')!);
  }
  @RequirePermission('branch.read') @Get('network/dashboard')
- network(@Query('days') days:string|undefined,@Query('branchId') branchId:string|undefined,@Req() req:Request){
-  return this.metrics.network(req.principal!,days,branchId);
+ network(@Query('days') days:string|undefined,@Query('branchId') branchId:string|undefined,@Query('countryCode') countryCode:string|undefined,@Req() req:Request){
+  return this.metrics.network(req.principal!,days,branchId,countryCode);
  }
  @RequirePermission('branch.manage') @Get('http')
  http(@Res() response:Response){

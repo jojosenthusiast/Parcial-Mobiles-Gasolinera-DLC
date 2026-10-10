@@ -59,7 +59,7 @@ struct GeneralDashboardView: View {
                             .foregroundStyle(DLCTheme.muted)
                     }
                     ProgressView(value: vm.totalCapacityLiters > 0 ? vm.totalInventoryLiters / vm.totalCapacityLiters : 0)
-                        .tint(DLCTheme.forest)
+                        .tint(DLCTheme.ink)
                     Text("\(vm.criticalTankCount) tanques en nivel crítico")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(vm.criticalTankCount > 0 ? DLCTheme.red : DLCTheme.green)
@@ -81,7 +81,7 @@ struct GeneralDashboardView: View {
                                     VStack(alignment: .leading, spacing: 3) {
                                         Text("\(alert.branch.name) · \(alert.tank.type.rawValue)")
                                             .font(.subheadline.weight(.semibold))
-                                            .foregroundStyle(DLCTheme.forest)
+                                            .foregroundStyle(DLCTheme.ink)
                                         Text("\(Int(alert.tank.currentLiters.rounded()).formatted()) L · \(alert.tank.percentage)% de capacidad")
                                             .font(.caption)
                                             .foregroundStyle(DLCTheme.muted)
@@ -110,6 +110,9 @@ struct GeneralDashboardView: View {
         .dlcScreen()
         .navigationBarHidden(true)
         .onAppear { vm.reload() }
+        .sensoryFeedback(.warning, trigger: vm.criticalTankCount) { oldValue, newValue in
+            newValue > oldValue
+        }
     }
 
     private var scopePicker: some View {

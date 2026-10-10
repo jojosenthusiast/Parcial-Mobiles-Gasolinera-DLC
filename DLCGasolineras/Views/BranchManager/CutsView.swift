@@ -50,7 +50,7 @@ private struct CutScheduleCard: View {
                 .background(cut.isClosed ? DLCTheme.greenBG : DLCTheme.orangeBG)
                 .clipShape(RoundedRectangle(cornerRadius: 14))
             VStack(alignment: .leading, spacing: 5) {
-                Text(cut.type.rawValue).font(.headline).foregroundStyle(DLCTheme.forest)
+                Text(cut.type.rawValue).font(.headline).foregroundStyle(DLCTheme.ink)
                 Text(cut.type.schedule).font(.caption).foregroundStyle(DLCTheme.muted)
                 Text(cut.isClosed ? "Cerrado · \(Int(cut.totalSoldGallons.rounded()).formatted()) gal vendidos" : "\(cut.completedPumpCount) de 6 bombas registradas")
                     .font(.caption.weight(.semibold)).foregroundStyle(cut.isClosed ? DLCTheme.green : DLCTheme.orange)
@@ -123,7 +123,7 @@ struct RemoteCutsDirectoryView: View {
                         VStack(alignment: .leading, spacing: 5) {
                             Text("Cortes de operación")
                                 .font(.largeTitle.weight(.bold))
-                                .foregroundStyle(DLCTheme.forest)
+                                .foregroundStyle(DLCTheme.ink)
                             Text(branchName)
                                 .font(.subheadline.weight(.medium))
                                 .foregroundStyle(DLCTheme.muted)
@@ -132,7 +132,7 @@ struct RemoteCutsDirectoryView: View {
                         Button { Task { await vm.load() } } label: {
                             Image(systemName: "arrow.clockwise")
                                 .font(.headline)
-                                .foregroundStyle(DLCTheme.forest)
+                                .foregroundStyle(DLCTheme.ink)
                                 .frame(width: 42, height: 42)
                                 .background(DLCTheme.surface, in: Circle())
                                 .overlay(Circle().stroke(DLCTheme.border, lineWidth: 1))
@@ -181,7 +181,7 @@ struct RemoteCutsDirectoryView: View {
                         }
                         VStack(alignment: .leading, spacing: 12) {
                             HStack(alignment: .firstTextBaseline) {
-                                Text("Turnos del día").font(.title3.weight(.bold)).foregroundStyle(DLCTheme.forest)
+                                Text("Turnos del día").font(.title3.weight(.bold)).foregroundStyle(DLCTheme.ink)
                                 Spacer()
                                 Text("\(vm.cuts.count) cortes")
                                     .font(.caption.weight(.semibold)).foregroundStyle(DLCTheme.muted)
@@ -238,7 +238,7 @@ struct RemoteCutsDirectoryView: View {
                     .background(DLCTheme.orangeBG, in: RoundedRectangle(cornerRadius: 16))
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Aún no hay cortes generados")
-                        .font(.headline).foregroundStyle(DLCTheme.forest)
+                        .font(.headline).foregroundStyle(DLCTheme.ink)
                     Text("Al generarlos, el servidor crea Matutino y Vespertino con sus horarios configurados.")
                         .font(.subheadline).foregroundStyle(DLCTheme.muted)
                 }
@@ -257,7 +257,7 @@ struct RemoteCutsDirectoryView: View {
                     .font(.headline)
                     .foregroundStyle(.white)
                     .padding(16)
-                    .background(LinearGradient(colors: [DLCTheme.orange, Color(red: 0.72, green: 0.22, blue: 0.10)], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 16))
+                    .background(LinearGradient(colors: [DLCTheme.orangeFill, Color(red: 0.72, green: 0.22, blue: 0.10)], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 16))
                 }
                 .disabled(vm.isGenerating || vm.isFutureDate)
                 .opacity(vm.isFutureDate ? 0.55 : 1)
@@ -307,7 +307,7 @@ private struct RemoteCutScheduleCard: View {
             CutProgressOrb(fraction: fraction, status: cut.status, size: 54)
             VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 7) {
-                    Text(cut.title).font(.headline).foregroundStyle(DLCTheme.forest)
+                    Text(cut.title).font(.headline).foregroundStyle(DLCTheme.ink)
                     Text(statusLabel(cut.status))
                         .font(.caption2.weight(.bold))
                         .foregroundStyle(statusColor(cut.status))
@@ -333,7 +333,7 @@ private struct RemoteCutScheduleCard: View {
         }
         .padding(15)
         .background(
-            LinearGradient(colors: [DLCTheme.surface, Color.white.opacity(0.78)], startPoint: .topLeading, endPoint: .bottomTrailing),
+            LinearGradient(colors: [DLCTheme.surface, DLCTheme.raised.opacity(0.78)], startPoint: .topLeading, endPoint: .bottomTrailing),
             in: RoundedRectangle(cornerRadius: 20)
         )
         .overlay(RoundedRectangle(cornerRadius: 20).stroke(DLCTheme.border, lineWidth: 1))
@@ -500,7 +500,7 @@ private struct RemoteCutDetailView: View {
     private var scheduledSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Label("Antes de iniciar", systemImage: "list.bullet.clipboard")
-                .font(.headline).foregroundStyle(DLCTheme.forest)
+                .font(.headline).foregroundStyle(DLCTheme.ink)
             Text("Al abrir, se fija la configuración de bombas, mangueras y tanques para este corte. El sistema exige continuidad con el turno anterior.")
                 .font(.subheadline).foregroundStyle(DLCTheme.muted).fixedSize(horizontal: false, vertical: true)
             Button {
@@ -523,13 +523,13 @@ private struct RemoteCutDetailView: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Avance de lecturas").font(.headline).foregroundStyle(DLCTheme.forest)
+                    Text("Avance de lecturas").font(.headline).foregroundStyle(DLCTheme.ink)
                     Text("Boquillas esperadas del snapshot de este turno")
                         .font(.caption).foregroundStyle(DLCTheme.muted)
                 }
                 Spacer()
                 Text("\(vm.capturedNozzles)/\(vm.expectedNozzles.count)")
-                    .font(.title3.monospacedDigit().weight(.bold)).foregroundStyle(DLCTheme.forest)
+                    .font(.title3.monospacedDigit().weight(.bold)).foregroundStyle(DLCTheme.ink)
                     .contentTransition(.numericText())
             }
             GeometryReader { proxy in
@@ -544,7 +544,7 @@ private struct RemoteCutDetailView: View {
             HStack(spacing: 8) {
                 ForEach(progress.products) { product in
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(product.productName).font(.caption.weight(.semibold)).foregroundStyle(DLCTheme.forest)
+                        Text(product.productName).font(.caption.weight(.semibold)).foregroundStyle(DLCTheme.ink)
                         Text("\(product.captured)/\(product.expected) · \(product.meterLiters) L")
                             .font(.caption2.monospacedDigit()).foregroundStyle(DLCTheme.muted)
                     }
@@ -574,7 +574,7 @@ private struct RemoteCutDetailView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
                         Label("Bomba \(dispenser.code)", systemImage: "fuelpump")
-                            .font(.subheadline.weight(.bold)).foregroundStyle(DLCTheme.forest)
+                            .font(.subheadline.weight(.bold)).foregroundStyle(DLCTheme.ink)
                         Spacer()
                         Text(dispenser.physicalStatus == "active" ? "Activa" : "No activa")
                             .font(.caption2.weight(.semibold)).foregroundStyle(dispenser.physicalStatus == "active" ? DLCTheme.green : DLCTheme.muted)
@@ -639,7 +639,7 @@ private struct RemoteCutDetailView: View {
 
     private func reconciliationSection(_ reconciliation: RemoteCutReconciliation) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            sectionHeading("Conciliación", detail: "Esperado vs. medido · valores del servidor", symbol: "chart.bar.xaxis", tint: DLCTheme.forest)
+            sectionHeading("Conciliación", detail: "Esperado vs. medido · valores del servidor", symbol: "chart.bar.xaxis", tint: DLCTheme.ink)
             if reconciliation.reviewRequired {
                 Label("Hay diferencias fuera de tolerancia; hace falta una revisión independiente.", systemImage: "exclamationmark.shield.fill")
                     .font(.subheadline.weight(.semibold)).foregroundStyle(DLCTheme.yellow)
@@ -651,7 +651,7 @@ private struct RemoteCutDetailView: View {
             }
             ForEach(reconciliation.products) { product in
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(product.productName ?? "Combustible").font(.subheadline.weight(.bold)).foregroundStyle(DLCTheme.forest)
+                    Text(product.productName ?? "Combustible").font(.subheadline.weight(.bold)).foregroundStyle(DLCTheme.ink)
                     comparisonRow("Medido por bombas", value: product.meterLiters?.value, unit: "L")
                     comparisonRow("Despachos confirmados", value: product.soldLiters?.value, unit: "L")
                     comparisonRow("Variación", value: product.varianceLiters?.value, unit: "L", emphasize: true)
@@ -667,7 +667,7 @@ private struct RemoteCutDetailView: View {
                                     Text(price.unitPriceUsd.map { "USD/\(price.priceUnit) \(number($0.value))" } ?? "Precio registrado")
                                     Spacer()
                                     Text("\(price.liters.map { number($0.value) } ?? "—") L · $\(price.salesUsd.map { number($0.value) } ?? "—")")
-                                }.font(.caption2.monospacedDigit()).foregroundStyle(DLCTheme.forest)
+                                }.font(.caption2.monospacedDigit()).foregroundStyle(DLCTheme.ink)
                             }
                         }
                         .padding(.top, 3)
@@ -677,11 +677,11 @@ private struct RemoteCutDetailView: View {
                 .background(DLCTheme.background.opacity(0.75), in: RoundedRectangle(cornerRadius: 15))
             }
             if !reconciliation.tanks.isEmpty {
-                Text("Niveles de tanque").font(.subheadline.weight(.bold)).foregroundStyle(DLCTheme.forest).padding(.top, 3)
+                Text("Niveles de tanque").font(.subheadline.weight(.bold)).foregroundStyle(DLCTheme.ink).padding(.top, 3)
                 ForEach(reconciliation.tanks) { tank in
                     VStack(alignment: .leading, spacing: 6) {
                         Text("\(tank.tankCode ?? tank.tankName ?? "Tanque") · \(tank.fuelName ?? "Combustible")")
-                            .font(.caption.weight(.semibold)).foregroundStyle(DLCTheme.forest)
+                            .font(.caption.weight(.semibold)).foregroundStyle(DLCTheme.ink)
                         comparisonRow("Libro", value: tank.ledgerLiters?.value, unit: "L")
                         comparisonRow("Medición física", value: tank.measuredLiters?.value, unit: "L")
                         comparisonRow("Variación", value: tank.varianceLiters?.value, unit: "L", emphasize: true)
@@ -706,7 +706,7 @@ private struct RemoteCutDetailView: View {
 
     private var reviewAndCloseSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            sectionHeading("Aprobación y cierre", detail: "El cierre es inmutable y conserva responsable y hora.", symbol: "lock.shield.fill", tint: DLCTheme.forest)
+            sectionHeading("Aprobación y cierre", detail: "El cierre es inmutable y conserva responsable y hora.", symbol: "lock.shield.fill", tint: DLCTheme.ink)
             if vm.cut.status == "closed" {
                 Label("Corte cerrado", systemImage: "checkmark.seal.fill")
                     .font(.headline).foregroundStyle(DLCTheme.green)
@@ -752,7 +752,7 @@ private struct RemoteCutDetailView: View {
             Image(systemName: symbol).font(.headline).foregroundStyle(tint)
                 .frame(width: 38, height: 38).background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
             VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.headline).foregroundStyle(DLCTheme.forest)
+                Text(title).font(.headline).foregroundStyle(DLCTheme.ink)
                 Text(detail).font(.caption).foregroundStyle(DLCTheme.muted).fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -767,7 +767,7 @@ private struct RemoteCutDetailView: View {
         }
         .foregroundStyle(.white)
         .padding(.horizontal, 15).padding(.vertical, 14)
-        .background(LinearGradient(colors: [DLCTheme.orange, Color(red: 0.73, green: 0.22, blue: 0.10)], startPoint: .leading, endPoint: .trailing), in: RoundedRectangle(cornerRadius: 15))
+        .background(LinearGradient(colors: [DLCTheme.orangeFill, Color(red: 0.73, green: 0.22, blue: 0.10)], startPoint: .leading, endPoint: .trailing), in: RoundedRectangle(cornerRadius: 15))
     }
 
     private func evidencePill(_ title: String, done: Bool) -> some View {
@@ -783,7 +783,7 @@ private struct RemoteCutDetailView: View {
             Spacer(minLength: 8)
             Text(value.map(number) ?? "—")
                 .font(.subheadline.monospacedDigit().weight(emphasize ? .bold : .medium))
-                .foregroundStyle(emphasize ? DLCTheme.orange : DLCTheme.forest)
+                .foregroundStyle(emphasize ? DLCTheme.orange : DLCTheme.ink)
             Text(unit).font(.caption2.weight(.semibold)).foregroundStyle(DLCTheme.muted)
         }
         .font(.caption)
@@ -791,7 +791,7 @@ private struct RemoteCutDetailView: View {
 
     private func financialSummary(_ finance: RemoteCutReconciliation.Finance) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Caja y ventas · USD").font(.subheadline.weight(.bold)).foregroundStyle(DLCTheme.forest)
+            Text("Caja y ventas · USD").font(.subheadline.weight(.bold)).foregroundStyle(DLCTheme.ink)
             comparisonRow("Ventas", value: finance.salesUsd?.value, unit: "USD")
             comparisonRow("Cobro confirmado", value: finance.confirmedCollectionUsd?.value, unit: "USD")
             comparisonRow("Efectivo", value: finance.cashConfirmedUsd?.value, unit: "USD")
@@ -836,7 +836,7 @@ private struct RemoteCutNozzleEntry: View {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Manguera \(nozzle.code) · \(nozzle.fuelName)")
-                        .font(.subheadline.weight(.semibold)).foregroundStyle(DLCTheme.forest)
+                        .font(.subheadline.weight(.semibold)).foregroundStyle(DLCTheme.ink)
                     Text(nozzle.participation == "excused" ? "Excluida · \(nozzle.exclusionReason ?? "motivo registrado")" : "Totalizador acumulado · \(nozzle.meterUnitLabel)")
                         .font(.caption).foregroundStyle(DLCTheme.muted)
                 }
@@ -852,7 +852,7 @@ private struct RemoteCutNozzleEntry: View {
                             Task { await onLink() }
                         } label: {
                             Label("Vincular lectura de este turno · \(nozzle.lastMeterValue ?? "") \(nozzle.meterUnitLabel)", systemImage: "link.circle.fill")
-                                .font(.caption.weight(.bold)).foregroundStyle(DLCTheme.forest)
+                                .font(.caption.weight(.bold)).foregroundStyle(DLCTheme.ink)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         .disabled(isWorking)
@@ -872,7 +872,7 @@ private struct RemoteCutNozzleEntry: View {
                                 Image(systemName: "arrow.up.circle.fill")
                                     .font(.title2).foregroundStyle(.white)
                                     .frame(width: 42, height: 42)
-                                    .background(DLCTheme.orange, in: RoundedRectangle(cornerRadius: 12))
+                                    .background(DLCTheme.orangeFill, in: RoundedRectangle(cornerRadius: 12))
                             }
                             .disabled(!canCapture || isWorking || value.isEmpty)
                             .opacity((!canCapture || value.isEmpty) ? 0.45 : 1)
@@ -920,7 +920,7 @@ private struct RemoteCutTankEntry: View {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("\(tank.name ?? tank.code) · \(tank.fuelName)")
-                        .font(.subheadline.weight(.bold)).foregroundStyle(DLCTheme.forest)
+                        .font(.subheadline.weight(.bold)).foregroundStyle(DLCTheme.ink)
                     Text("Capacidad \(tank.capacityLiters) L · tanque \(tank.code)")
                         .font(.caption).foregroundStyle(DLCTheme.muted)
                 }
@@ -940,7 +940,7 @@ private struct RemoteCutTankEntry: View {
                 Label(isWorking ? "Guardando…" : tank.measuredLiters == nil ? "Guardar medición" : "Actualizar medición", systemImage: "drop.circle.fill")
                     .font(.caption.weight(.bold)).foregroundStyle(.white)
                     .frame(maxWidth: .infinity).padding(.vertical, 11)
-                    .background(DLCTheme.blue, in: RoundedRectangle(cornerRadius: 12))
+                    .background(DLCTheme.blueFill, in: RoundedRectangle(cornerRadius: 12))
             }
             .disabled(!canEdit || isWorking || measured.isEmpty)
             .opacity((!canEdit || measured.isEmpty) ? 0.48 : 1)
@@ -985,7 +985,7 @@ private func statusBackground(_ status: String) -> Color {
     switch status {
     case "closed": DLCTheme.greenBG
     case "inReview": DLCTheme.yellowBG
-    case "prepared": Color(red: 0.89, green: 0.93, blue: 0.95)
+    case "prepared": DLCTheme.blueBG
     case "open": DLCTheme.orangeBG
     default: DLCTheme.background
     }

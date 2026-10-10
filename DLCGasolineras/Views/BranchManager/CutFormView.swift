@@ -10,6 +10,8 @@ struct CutFormView: View {
     @State private var lossCause: LossCause = .merma
     @State private var explanation = ""
     @State private var formError = ""
+    @State private var addedCount = 0
+    @State private var failedCount = 0
 
     init(cut: DailyCut) {
         _vm = StateObject(wrappedValue: CutFlowViewModel(cut: cut))
@@ -49,6 +51,8 @@ struct CutFormView: View {
         .navigationTitle("\(vm.cut.type.rawValue) · \(vm.cut.type.schedule)")
         .navigationBarTitleDisplayMode(.inline)
         .dlcScreen()
+        .sensoryFeedback(.impact, trigger: addedCount)
+        .sensoryFeedback(.error, trigger: failedCount)
     }
 
     private var header: some View {
@@ -94,9 +98,18 @@ struct CutFormView: View {
                     .textFieldStyle(DLCTextFieldStyle())
             }
 
+            if quantityIsInvalid {
+                Label("La cantidad debe ser un número mayor que 0.", systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption.weight(.semibold)).foregroundStyle(DLCTheme.red)
+            }
             if !formError.isEmpty {
                 Label(formError, systemImage: "exclamationmark.circle.fill")
                     .font(.caption).foregroundStyle(DLCTheme.red)
+            }
+            if !missingFields.isEmpty {
+                Label("Falta: \(missingFields.joined(separator: ", ")).", systemImage: "info.circle")
+                    .font(.caption).foregroundStyle(DLCTheme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Button(action: addMovement) {
@@ -104,6 +117,7 @@ struct CutFormView: View {
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(PrimaryButtonStyle())
+            .disabled(!missingFields.isEmpty)
         }
         .dlcCard(color: DLCTheme.surface)
     }
@@ -151,9 +165,37 @@ struct CutFormView: View {
         .dlcCard()
     }
 
+    // MARK: - Real-time validation (the checks in the view model remain the authority)
+
+    private func isBlank(_ text: String) -> Bool {
+        text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var validQuantity: Double? {
+        guard let value = parseNumber(quantity), value.isFinite, value > 0 else { return nil }
+        return value
+    }
+
+    private var quantityIsInvalid: Bool {
+        !isBlank(quantity) && validQuantity == nil
+    }
+
+    private var missingFields: [String] {
+        var items: [String] = []
+        if validQuantity == nil { items.append("cantidad en litros") }
+        if movementKind == .receipt {
+            if isBlank(supplier) { items.append("proveedor") }
+            if isBlank(reference) { items.append("documento o folio") }
+        } else if isBlank(explanation) {
+            items.append("explicación de la pérdida")
+        }
+        return items
+    }
+
     private func addMovement() {
         guard let liters = parseNumber(quantity) else {
             formError = "Ingresa una cantidad válida en litros."
+            failedCount += 1
             return
         }
         if movementKind == .receipt {
@@ -163,6 +205,7 @@ struct CutFormView: View {
             formError = vm.addLoss(fuel: selectedFuel, liters: liters, cause: lossCause, explanation: explanation) ?? ""
             if formError.isEmpty { quantity = ""; explanation = "" }
         }
+        if formError.isEmpty { addedCount += 1 } else { failedCount += 1 }
     }
 
     private func parseNumber(_ text: String) -> Double? {
