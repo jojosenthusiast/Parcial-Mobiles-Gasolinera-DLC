@@ -29,8 +29,8 @@ The closure handoff contains contradictory historical test status and lists unve
 ## Tasks
 
 - [x] DLC-01 Record current checkout and isolated-QA readiness; preserve generated worktree files.
-- [x] DLC-02 Diagnose the duplicate declaration preventing Node unit test modules from compiling; make the inline import-stripping regexes CRLF-tolerant. Root cause confirmed: LF-only patterns silently failed against CRLF source and left duplicate imports in generated modules.
-- [ ] DLC-03 Fix the confirmed shared Flutter API analyzer issue and provide relevant package test coverage if the behavior has a meaningful deterministic test.
+- [x] DLC-02 Diagnose the duplicate declaration preventing Node unit test modules from compiling; make the inline import-stripping regexes CRLF-tolerant. Root cause confirmed: LF-only patterns silently failed against CRLF source and left duplicate imports in generated modules. Work-unit commit: `55d1e99` (`test: handle CRLF imports in service harness`).
+- [x] DLC-03 Fix the shared Flutter API analyzer issue. Removed an unreachable null-check branch in the request log interpolation; no package `test/` directory exists and no behavior change warranted a new test.
 - [ ] DLC-04 Run available local test suites and review web/mobile/API paths within actual environment capabilities.
 - [ ] DLC-05 Verify whether a non-production QA API/Supabase target and test accounts are available; execute safe integration journeys or document blockers.
 - [ ] DLC-06 Rebuild APKs, calculate hashes, and validate source ZIP exclusions only after implementation checks pass.
@@ -48,11 +48,14 @@ The closure handoff contains contradictory historical test status and lists unve
 - Root-cause evidence: `server/test/branch-onboarding-service.test.mjs:7-10` removed imports with `/^import .+?;\n/gm`, then prepended replacement exception classes. On this CRLF checkout the regex matched zero imports, so the generated `data:` module contained both a local `BadRequestException` declaration and the original `@nestjs/common` import. Reproduced under Node 24; 18 affected test files shared this import-stripping family. No shared loader helper exists.
 - Fix evidence: updated the existing 18 inline import-strip expressions to accept `\r?\n`, preserving each test's existing callback behavior; no shared refactor or extra files.
 - Verification after fix: representative branch-onboarding test passed 5/5; full server unit suite passed 222/222, 0 failed/skipped; `git diff --check` clean. Both commands ran under Node v24.19.0. Parent independently reran the representative test: exit 0, 5 passed.
-- Current progress: DLC-01 and DLC-02 complete. No application source, external services, APKs, closure artifacts, commits, push, or deployment changed yet. Original generated Flutter files and caches remain untouched.
+- Flutter analyzer fix: `employee_session.dart:2241` used a redundant nullable comparison although the correlation ID expression falls back to non-null `requestId`. `flutter analyze --no-pub` passed for `dlc_api`, `dlc_customers`, and `dlc_operations` after the one-line cleanup.
+- Fresh Flutter test verification after that fix: customers app passed 1/1; operations app passed 4/4. Flutter 3.47.5 / Dart 3.13.4, Windows 10 x64. These are Flutter tests; the separate analyzer results are not counted as tests.
+- RDD boundary: mode is on by default. Assessment for commit `55d1e99` reported high risk/unassessable because four untracked package cache/lock artifacts lacked an explicit selection. Selectorless status returned `collect intended_untracked_selection`; this runtime exposes no `external.select_intended_untracked` capture tool. No review candidate was submitted and no PASS/receipt is claimed. Reassess committed-only after explicitly excluding generated package artifacts if the CLI supports the exact offered selection.
+- Current progress: DLC-01–DLC-03 complete. The CRLF test-harness change is committed locally as `55d1e99`. No external services, APKs, closure documents, push, or deployment changed yet. Original generated Flutter files and package caches remain untouched.
 
 ## Next step
 
-Use the existing failing unit test as RED evidence, make the inline import-stripping regexes CRLF-tolerant, and re-run one representative test followed by all server unit tests under Node 24. Before source edits, this task document has been read back and mirrored to Engram.
+Inspect the source-package release and artifact workflow, then map which remaining checks can be run safely without an identified QA tenant or connected device. Preserve the external-service and production boundary.
 
 ## Relevant files
 

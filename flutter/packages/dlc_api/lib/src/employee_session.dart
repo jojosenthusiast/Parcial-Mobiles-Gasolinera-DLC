@@ -2238,7 +2238,7 @@ class EmployeeSession {
       final code = nested['code'] as String?;
       final correlationId = nested['correlationId'] as String? ?? requestId;
       developer.log(
-        'HTTP ${response.statusCode} ${method.toUpperCase()} ${_safeRoute(path)}${code == null ? '' : ' code=$code'}${correlationId == null ? '' : ' correlationId=$correlationId'}',
+        'HTTP ${response.statusCode} ${method.toUpperCase()} ${_safeRoute(path)}${code == null ? '' : ' code=$code'} correlationId=$correlationId',
         name: 'dlc.api',
         level: 900,
       );
