@@ -1,9 +1,18 @@
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { stripTypeScriptTypes } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+
+function stripTypeScriptTypes(value) {
+  return value
+    .replace(/^type ReportRow =.*\r?\n/gm, '')
+    .replace(/^export interface ReportDocument \{[\s\S]*?^}\r?\n/gm, '')
+    .replace(/onProgress\?: \(completed: number, total: number\) => Promise<void>/g, 'onProgress')
+    .replace(/: (?:ReadonlyArray<readonly \[string, string\]>|readonly ReportRow\[\]|readonly unknown\[\]|readonly string\[\]|string\[\]\[\]|string\[\]|Buffer\[\]|Promise<Buffer>|ReportDocument|unknown|string|number|Uint8Array|Buffer)\s*(?=[,)=;{])/g, '')
+    .replace(/Promise<void>/g, 'Promise')
+    .replace(/(?<=\])!/g, '');
+}
 
 const source = await readFile(new URL('../src/reports/export-documents.ts', import.meta.url), 'utf8');
 const module = await import(`data:text/javascript;charset=utf-8,${encodeURIComponent(stripTypeScriptTypes(source))}`);
@@ -47,6 +56,18 @@ test('XLSX es un paquete OpenXML válido y exporta contenido como texto, sin fó
     assert.doesNotMatch(worksheet, /<f>/);
     assert.match(worksheet, /autoFilter ref="A8:C9"/);
   } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('XLSX serializa números como celdas numéricas y PDF conserva diacríticos', async () => {
+  const numericRows = [{ ...rows[0], amount: 12.25 }];
+  const workbook = await module.serializeReportXlsx(document, numericRows);
+  const worksheet = readStoredZipEntries(workbook).get('xl/worksheets/sheet1.xml');
+  assert.ok(worksheet);
+  assert.match(worksheet, /<c r="C9"><v>12\.25<\/v><\/c>/);
+  assert.doesNotMatch(worksheet, /<c r="C9" t="inlineStr">/);
+
+  const pdf = await module.serializeReportPdf(document, numericRows);
+  assert.match(pdf.toString('latin1'), /Súper & Regular <especial> \| 12\.25/);
 });
 
 test('PDF divide un reporte largo en varias páginas', async () => {

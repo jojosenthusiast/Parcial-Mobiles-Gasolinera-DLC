@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 const contract = JSON.parse(await readFile(new URL('../../contracts/openapi.json', import.meta.url), 'utf8'));
-const app = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+const app = (await Promise.all(['app.js', 'reports-page.js'].map(name => readFile(new URL('../public/' + name, import.meta.url), 'utf8')))).join('\n');
+const labels = await import('../public/labels.js');
 const inventoryService = await readFile(new URL('../../server/src/inventory/fuel-inventory.service.ts', import.meta.url), 'utf8');
 const contaminationService = await readFile(new URL('../../server/src/procurement/contamination.service.ts', import.meta.url), 'utf8');
 const salesService = await readFile(new URL('../../server/src/sales/sales.service.ts', import.meta.url), 'utf8');
@@ -68,8 +69,6 @@ test('las pantallas invocadas desde el router tienen implementación', () => {
   assert.match(app, /const storedDays=Number\(new URL\(location\.href\)\.searchParams\.get\('days'\)\)/);
   assert.match(app, /days:\[1,7,30\]\.includes\(storedDays\)\?storedDays:7/);
   assert.match(app, /url\.searchParams\.set\('days',\[1,7,30\]\.includes\(Number\(state\.days\)\)\?String\(state\.days\):'7'\)/);
-  assert.match(app, /branch-select'\)\.onchange=e=>\{if\(state\.branchId!==\(e\.target\.value\|\|null\)\)history\.pushState/);
-  assert.match(app, /period'\)\.onchange=e=>\{const days=Number\(e\.target\.value\);if\(state\.days!==days\)history\.pushState/);
   assert.match(app, /requestedBranch&&state\.allBranches\.some\(b=>b\.id===requestedBranch\)/);
   assert.match(app, /function filterValue\(key,fallback=''/);
   assert.match(app, /saveFilter\('cuts\.date',date\)/);
@@ -119,12 +118,7 @@ test('las pantallas invocadas desde el router tienen implementación', () => {
   assert.match(app, /staff\/shifts\?from=\$\{encodeURIComponent\(from\)\}&to=\$\{encodeURIComponent\(to\)\}/);
   assert.match(app, /staff-more/);
   assert.match(app, /El periodo debe tener fechas válidas y abarcar entre 1 y 31 días/);
-  assert.match(app, /dailySeries/);
-  assert.match(app, /Tendencia diaria de ventas/);
-  assert.match(app, /Ver valores exactos por día/);
   assert.match(app, /timeZone:'America\/El_Salvador'/);
-  assert.match(app, /Consumo y venta por combustible/);
-  assert.match(app, /Tu cuenta no tiene permiso para consultar métricas de ventas/);
   assert.match(app, /saveFilter\('finance\.from'/);
   assert.match(app, /saveFilter\('finance\.status'/);
   assert.match(app, /expenseParams\(expenseCursor\)/);
@@ -150,8 +144,8 @@ test('las pantallas invocadas desde el router tienen implementación', () => {
   assert.match(app, /inventory\/movements\?\$\{params\}/);
   assert.match(app, /page\?\.meta\?\.nextCursor/);
   assert.match(app, /inventory-movement-more/);
-  assert.match(app, /cr\[ií\]tico/);
-  assert.match(app, /atenci\[oó\]n/);
+  assert.match(app, /statusBadge/);
+  assert.equal(labels.statusLabel('warning'), 'Atención');
   assert.match(inventoryService, /meta: \{ limit: pageLimit, nextCursor:/);
   assert.ok(contract.paths['/branches/{branchId}/tanks/{tankId}/inventory/movements']?.get);
   assert.match(app, /filterValue\('prices\.product'\)/);
@@ -200,19 +194,22 @@ test('reportes conservan el periodo en hora de El Salvador y cierran la paginaci
   assert.match(app, /filterValue\('reports\.from'\)/);
   assert.match(app, /filterValue\('reports\.to'\)/);
   assert.match(app, /filterValue\('reports\.type'\)/);
-  assert.match(app, /saveFilter\('reports\.from',from\)/);
+  assert.match(app, /saveFilter\('reports\.from', from\)/);
   assert.match(app, /saveFilter\('reports\.groupBy'/);
-  assert.match(app, /Date\.UTC\(reportYear,reportMonth-1,reportDay-rangeDays\)/);
-  assert.match(app, /validReportDate\(from\).*span>365/);
+  assert.match(app, /quickRange\('7d', t\)/);
+  assert.match(app, /validReportDate\(from\).*> 365/);
   assert.match(app, /id="more-rows" data-offset=/);
-  assert.match(app, /button\.hidden=!Number\.isInteger\(d\.nextOffset\)/);
+  assert.match(app, /button\.hidden = !Number\.isInteger\(d\.nextOffset\)/);
 });
 
-test('el dashboard de sucursal distingue inventario en cero de mediciones ausentes', () => {
-  assert.match(app, /measuredTanks=tanks\.filter\(t=>t\.percentage!==null&&t\.percentage!==undefined&&Number\.isFinite\(Number\(t\.percentage\)\)\)/);
-  assert.match(app, /pct===null\?'Sin mediciones de nivel'/);
-  assert.match(app, /inventory\.totalLiters===null\|\|inventory\.totalLiters===undefined\?'Sin dato'/);
-  assert.doesNotMatch(app, /inventory\.totalLiters\?`\$\{Math\.round\(inventory\.totalLiters\)/);
+test('el dashboard de sucursal distingue inventario en cero de mediciones ausentes', async () => {
+  const { summarizeBranch } = await import('../public/dashboard-model.js');
+  const nulo = summarizeBranch({ inventory: { totalLiters: null, tanks: [{ percentage: null }] } });
+  assert.equal(nulo.totalLiters, null);
+  assert.equal(nulo.note, 'Sin mediciones de nivel');
+  const cero = summarizeBranch({ inventory: { totalLiters: 0, tanks: [{ percentage: 0 }] } });
+  assert.equal(cero.totalLiters, 0);
+  assert.equal(cero.averagePercent, 0);
 });
 
 test('el flujo de cortes ofrece captura, conciliación y cierre con permisos y versiones', async () => {

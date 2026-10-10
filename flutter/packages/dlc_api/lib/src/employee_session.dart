@@ -1,4 +1,4 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'dart:developer' as developer;
 import 'dart:math';
 import 'dart:typed_data';
@@ -132,10 +132,10 @@ class EmployeeSession {
 
   Future<EmployeeIdentity> login(String email, String password) async {
     if (email.trim().isEmpty || !email.contains('@')) {
-      throw const DlcApiException('Escribe un correo válido.');
+      throw const DlcApiException('Escribe un correo vÃ¡lido.');
     }
     if (password.isEmpty || password.length > 256) {
-      throw const DlcApiException('La contraseña no es válida.');
+      throw const DlcApiException('La contraseÃ±a no es vÃ¡lida.');
     }
     final token = await _request(
       'POST',
@@ -741,7 +741,7 @@ class EmployeeSession {
         'volumeBasis': 'observed',
         'totalCostUsd': totalCostUsd,
         'reasonCode': 'purchase_receipt',
-        'reason': 'Recepción de compra física',
+        'reason': 'RecepciÃ³n de compra fÃ­sica',
         'documentReference': documentReference.trim(),
       },
     };
@@ -1026,7 +1026,7 @@ class EmployeeSession {
     int points,
   ) async {
     if (points < 1 || points > 2000000000)
-      throw const DlcApiException('La cantidad de puntos no es válida.');
+      throw const DlcApiException('La cantidad de puntos no es vÃ¡lida.');
     final body = {'cashSessionId': sessionId, 'points': points};
     return _data(
       await _durableCommand(
@@ -1069,7 +1069,7 @@ class EmployeeSession {
     final pending = await _readPendingPosSale(branchId);
     if (pending == null || _string((pending['sale'] as Map?)?['id']) != saleId)
       throw const DlcApiException(
-        'No se encontró el contexto guardado de esta venta.',
+        'No se encontrÃ³ el contexto guardado de esta venta.',
       );
     final existing = pending['payment'] is Map
         ? Map<String, dynamic>.from(pending['payment'] as Map)
@@ -1117,7 +1117,7 @@ class EmployeeSession {
     final pending = await _readPendingPosSale(branchId);
     if (pending == null)
       throw const DlcApiException(
-        'No se encontró la venta pendiente de conciliación.',
+        'No se encontrÃ³ la venta pendiente de conciliaciÃ³n.',
       );
     final body = {
       'outcome': outcome,
@@ -1208,7 +1208,7 @@ class EmployeeSession {
         resolution['body'] is! Map ||
         payment?['attemptId'] is! String) {
       throw const DlcApiException(
-        'No hay una conciliación incierta lista para reintentar.',
+        'No hay una conciliaciÃ³n incierta lista para reintentar.',
       );
     }
     final body = Map<String, dynamic>.from(resolution['body'] as Map);
@@ -1339,6 +1339,15 @@ class EmployeeSession {
         .map((row) => Map<String, dynamic>.from(row))
         .toList(growable: false);
   }
+
+  /// Effective and upcoming fuel prices of a branch: `{current: [...],
+  /// upcoming: [...]}` (additive helper; GET /branches/:id/fuel-prices).
+  Future<Map<String, dynamic>> fuelPrices(String branchId) async => _data(
+    await _request(
+      'GET',
+      '/branches/${Uri.encodeComponent(branchId)}/fuel-prices',
+    ),
+  );
 
   Future<Map<String, dynamic>> branchConfiguration(String branchId) async =>
       _data(
@@ -1539,7 +1548,7 @@ class EmployeeSession {
     if (!endsAt.isAfter(startsAt) ||
         endsAt.difference(startsAt) > const Duration(hours: 24)) {
       throw const DlcApiException(
-        'El turno debe terminar después de iniciar y durar máximo 24 horas.',
+        'El turno debe terminar despuÃ©s de iniciar y durar mÃ¡ximo 24 horas.',
       );
     }
     return _data(
@@ -1564,7 +1573,7 @@ class EmployeeSession {
   ) async {
     if (reason.trim().length < 10 || reason.trim().length > 500)
       throw const DlcApiException(
-        'Explica la cancelación con 10 a 500 caracteres.',
+        'Explica la cancelaciÃ³n con 10 a 500 caracteres.',
       );
     return _data(
       await _request(
@@ -1581,7 +1590,7 @@ class EmployeeSession {
     String kind,
   ) async {
     if (!['clock_in', 'clock_out'].contains(kind))
-      throw const DlcApiException('Tipo de marcación no válido.');
+      throw const DlcApiException('Tipo de marcaciÃ³n no vÃ¡lido.');
     return _data(
       await _request(
         'POST',
@@ -1644,7 +1653,7 @@ class EmployeeSession {
     if (!['volume', 'amount'].contains(mode) ||
         !['liter', 'gallon_us'].contains(volumeUnit)) {
       throw const DlcApiException(
-        'La cantidad o unidad del despacho no es válida.',
+        'La cantidad o unidad del despacho no es vÃ¡lida.',
       );
     }
     final path =
@@ -1849,7 +1858,7 @@ class EmployeeSession {
   ) async {
     if (!RegExp(r'^(?:0|[1-9]\d{0,11})(?:\.\d{1,9})?$').hasMatch(value)) {
       throw const DlcApiException(
-        'La lectura debe ser un totalizador válido, sin separadores de miles.',
+        'La lectura debe ser un totalizador vÃ¡lido, sin separadores de miles.',
       );
     }
     return _data(
@@ -1875,7 +1884,7 @@ class EmployeeSession {
   }) async {
     if (!RegExp(r'^(?:0|[1-9]\d{0,11})(?:\.\d{1,9})?$').hasMatch(value)) {
       throw const DlcApiException(
-        'La línea base debe ser un totalizador válido.',
+        'La lÃ­nea base debe ser un totalizador vÃ¡lido.',
       );
     }
     return _data(
@@ -1928,7 +1937,7 @@ class EmployeeSession {
         temperatureC.isNotEmpty &&
             !RegExp(r'^-?\d{1,3}(\.\d{1,4})?$').hasMatch(temperatureC)) {
       throw const DlcApiException(
-        'Revisa litros, agua y temperatura. Usa punto decimal y valores válidos.',
+        'Revisa litros, agua y temperatura. Usa punto decimal y valores vÃ¡lidos.',
       );
     }
     await _request(
@@ -1986,7 +1995,7 @@ class EmployeeSession {
   ) async {
     if (reason.trim().length < 8 || reason.trim().length > 500) {
       throw const DlcApiException(
-        'Indica un motivo de revisión de 8 a 500 caracteres.',
+        'Indica un motivo de revisiÃ³n de 8 a 500 caracteres.',
       );
     }
     await _request(
@@ -2001,6 +2010,227 @@ class EmployeeSession {
       'POST',
       '/branches/${Uri.encodeComponent(branchId)}/cuts/${Uri.encodeComponent(cutId)}/close',
       body: {'expectedVersion': version},
+    );
+  }
+
+  // ---- Fuel receipts / losses recorded from the cut -------------------------
+
+  static final RegExp _inventoryDecimal = RegExp(r'^\d{1,12}(?:\.\d{1,12})?$');
+
+  /// Direct fuel receipt into a tank (`POST .../inventory/receipts`).
+  /// [folio] is the supplier document (required by the server). Pass the same
+  /// [commandId] when retrying so the call stays idempotent.
+  Future<Map<String, dynamic>> recordFuelReceipt(
+    String branchId,
+    String tankId, {
+    required String liters,
+    required String folio,
+    required String supplier,
+    String? commandId,
+  }) async {
+    if (!_inventoryDecimal.hasMatch(liters.trim())) {
+      throw const DlcApiException('Los litros recibidos no son vÃ¡lidos.');
+    }
+    if (folio.trim().isEmpty) {
+      throw const DlcApiException('Indica el folio del documento del proveedor.');
+    }
+    return _data(
+      await _request(
+        'POST',
+        '/branches/${Uri.encodeComponent(branchId)}/tanks/${Uri.encodeComponent(tankId)}/inventory/receipts',
+        body: {
+          'commandId': commandId ?? _uuidV4(),
+          'quantity': liters.trim(),
+          'unit': 'liter',
+          'volumeBasis': 'observed',
+          'documentReference': folio.trim(),
+          if (supplier.trim().isNotEmpty)
+            'reason': 'Proveedor: ${supplier.trim()}',
+        },
+      ),
+    );
+  }
+
+  /// Fuel loss / shrinkage with cause and explanation
+  /// (`POST .../inventory/losses`).
+  Future<Map<String, dynamic>> recordFuelLoss(
+    String branchId,
+    String tankId, {
+    required String liters,
+    required String reasonCode,
+    required String explanation,
+    String? commandId,
+  }) async {
+    if (!_inventoryDecimal.hasMatch(liters.trim())) {
+      throw const DlcApiException('Los litros perdidos no son vÃ¡lidos.');
+    }
+    if (explanation.trim().length < 8) {
+      throw const DlcApiException('Explica la causa con al menos 8 caracteres.');
+    }
+    return _data(
+      await _request(
+        'POST',
+        '/branches/${Uri.encodeComponent(branchId)}/tanks/${Uri.encodeComponent(tankId)}/inventory/losses',
+        body: {
+          'commandId': commandId ?? _uuidV4(),
+          'quantity': liters.trim(),
+          'unit': 'liter',
+          'volumeBasis': 'observed',
+          'reasonCode': reasonCode,
+          'reason': explanation.trim().length > 500
+              ? explanation.trim().substring(0, 500)
+              : explanation.trim(),
+        },
+      ),
+    );
+  }
+
+  // ---- Dispense recovery (cancel / unknown / reconcile) ---------------------
+
+  Future<Map<String, dynamic>> _dispenseReasonCommand(
+    String action,
+    String branchId,
+    String authorizationId,
+    int version,
+    String? reason,
+  ) async => _data(
+    await _durableCommand(
+      'dispense-$action-$authorizationId',
+      '/branches/${Uri.encodeComponent(branchId)}/dispense-authorizations/${Uri.encodeComponent(authorizationId)}/$action',
+      {
+        'expectedVersion': version,
+        if (reason != null && reason.trim().isNotEmpty) 'reason': reason.trim(),
+      },
+    ),
+  );
+
+  /// Cancels an authorization that was never dispensed (frees the nozzle).
+  Future<Map<String, dynamic>> cancelDispense(
+    String branchId,
+    String authorizationId,
+    int version, {
+    String? reason,
+  }) => _dispenseReasonCommand('cancel', branchId, authorizationId, version, reason);
+
+  /// Marks a hung authorization as unknown so it can be reconciled.
+  Future<Map<String, dynamic>> markDispenseUnknown(
+    String branchId,
+    String authorizationId,
+    int version, {
+    String? reason,
+  }) => _dispenseReasonCommand('unknown', branchId, authorizationId, version, reason);
+
+  /// Reconciles an `unknown` authorization where no fuel flowed.
+  Future<Map<String, dynamic>> reconcileDispenseNoFlow(
+    String branchId,
+    String authorizationId,
+    int version, {
+    required String evidenceReference,
+    required String reason,
+  }) async => _data(
+    await _durableCommand(
+      'dispense-reconcile-$authorizationId',
+      '/branches/${Uri.encodeComponent(branchId)}/dispense-authorizations/${Uri.encodeComponent(authorizationId)}/reconcile-no-flow',
+      {
+        'expectedVersion': version,
+        'evidenceReference': evidenceReference.trim(),
+        'reason': reason.trim(),
+      },
+    ),
+  );
+
+  // ---- User administration ---------------------------------------------------
+
+  /// Roles of the organization (`GET /roles`, needs `user.manage`).
+  Future<List<Map<String, dynamic>>> listRoles() async {
+    final payload = await _request('GET', '/roles');
+    return (payload['data'] as List<dynamic>? ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList(growable: false);
+  }
+
+  Future<List<Map<String, dynamic>>> users({
+    String? branchId,
+    String? query,
+    String? status,
+  }) async {
+    final params = <String, String>{
+      'limit': '200',
+      if (branchId != null && branchId.isNotEmpty) 'branchId': branchId,
+      if (query != null && query.trim().isNotEmpty) 'query': query.trim(),
+      if (status != null && status.isNotEmpty) 'status': status,
+    };
+    final payload = await _request(
+      'GET',
+      '/users?${Uri(queryParameters: params).query}',
+    );
+    return (payload['data'] as List<dynamic>? ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList(growable: false);
+  }
+
+  /// Invites a user. The response holds the one-time `activationToken` that
+  /// must be delivered manually (it is never retrievable again).
+  Future<Map<String, dynamic>> inviteUser({
+    required String email,
+    required String displayName,
+    required String roleId,
+    String? branchId,
+    String? employeeId,
+  }) async => _data(
+    await _request(
+      'POST',
+      '/users/invitations',
+      body: {
+        'email': email.trim().toLowerCase(),
+        'displayName': displayName.trim(),
+        'roleId': roleId,
+        if (branchId != null && branchId.isNotEmpty) 'branchId': branchId,
+        if (employeeId != null && employeeId.isNotEmpty) 'employeeId': employeeId,
+      },
+    ),
+  );
+
+  /// Issues a one-time password-reset token (`resetToken`).
+  Future<Map<String, dynamic>> resetUserPassword(String userId) async => _data(
+    await _request(
+      'POST',
+      '/users/${Uri.encodeComponent(userId)}/password-reset',
+      body: const {},
+    ),
+  );
+
+  /// Suspends (`suspended`) or reactivates (`active`) a user.
+  Future<void> setUserStatus(String userId, String status) async {
+    if (status != 'active' && status != 'suspended') {
+      throw const DlcApiException('El estado de usuario no es vÃ¡lido.');
+    }
+    await _request(
+      'POST',
+      '/users/${Uri.encodeComponent(userId)}/status',
+      body: {'status': status},
+    );
+  }
+
+  /// Public: activates an invited account (`POST /auth/activate`).
+  Future<void> activateAccount(String token, String password) async {
+    await _request(
+      'POST',
+      '/auth/activate',
+      body: {'token': token.trim(), 'password': password},
+      authenticated: false,
+    );
+  }
+
+  /// Public: completes a password reset (`POST /auth/password-reset/complete`).
+  Future<void> completePasswordReset(String token, String password) async {
+    await _request(
+      'POST',
+      '/auth/password-reset/complete',
+      body: {'token': token.trim(), 'password': password},
+      authenticated: false,
     );
   }
 
@@ -2031,7 +2261,7 @@ class EmployeeSession {
   }) async {
     if (to.isBefore(from))
       throw const DlcApiException(
-        'El fin del período debe ser igual o posterior al inicio.',
+        'El fin del perÃ­odo debe ser igual o posterior al inicio.',
       );
     String day(DateTime d) =>
         '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
@@ -2140,7 +2370,7 @@ class EmployeeSession {
         level: 1000,
       );
       throw DlcApiException(
-        'No se pudo descargar el archivo. Comprueba la conexión e inténtalo de nuevo.',
+        'No se pudo descargar el archivo. Comprueba la conexiÃ³n e intÃ©ntalo de nuevo.',
         correlationId: requestId,
       );
     }
@@ -2202,7 +2432,7 @@ class EmployeeSession {
         _refreshToken!.isEmpty ||
         _sessionId!.isEmpty) {
       throw const DlcApiException(
-        'El servidor devolvió una sesión incompleta.',
+        'El servidor devolviÃ³ una sesiÃ³n incompleta.',
       );
     }
     await Future.wait([
@@ -2253,7 +2483,7 @@ class EmployeeSession {
   }
 
   Never _sessionExpired() => throw const DlcApiException(
-    'Tu sesión expiró. Inicia sesión de nuevo.',
+    'Tu sesiÃ³n expirÃ³. Inicia sesiÃ³n de nuevo.',
     code: 'SESSION_EXPIRED',
     statusCode: 401,
   );
@@ -2322,7 +2552,7 @@ class EmployeeSession {
         level: 1000,
       );
       throw DlcApiException(
-        'No se pudo conectar con el servidor. Revisa la red y la dirección de la API.',
+        'No se pudo conectar con el servidor. Revisa la red y la direcciÃ³n de la API.',
         correlationId: requestId,
       );
     }
@@ -2338,7 +2568,7 @@ class EmployeeSession {
         level: 900,
       );
       throw DlcApiException(
-        'El servidor respondió con un formato inesperado (HTTP ${response.statusCode}).',
+        'El servidor respondiÃ³ con un formato inesperado (HTTP ${response.statusCode}).',
         correlationId: requestId,
       );
     }
@@ -2356,7 +2586,7 @@ class EmployeeSession {
       throw DlcApiException(
         message is String
             ? message
-            : 'La solicitud no se completó (HTTP ${response.statusCode}).',
+            : 'La solicitud no se completÃ³ (HTTP ${response.statusCode}).',
         code: code,
         correlationId: correlationId,
         statusCode: response.statusCode,

@@ -6,6 +6,8 @@ import 'app_theme.dart';
 import 'customer_qr_scanner_screen.dart';
 import 'package:dlc_api/dlc_api.dart';
 import 'package:flutter/material.dart';
+import 'format.dart';
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:share_plus/share_plus.dart';
 
 class CashScreen extends StatefulWidget {
@@ -153,18 +155,18 @@ class _CashScreenState extends State<CashScreen> {
               ),
             ),
             tooltip: 'Devoluciones de puntos',
-            icon: const Icon(Icons.currency_exchange),
+            icon: const Icon(CupertinoIcons.arrow_right_arrow_left),
           ),
         if (widget.permissions.contains('cash.register.manage'))
           IconButton(
             onPressed: _loading ? null : _createRegister,
             tooltip: 'Crear caja',
-            icon: const Icon(Icons.add_box_outlined),
+            icon: const Icon(CupertinoIcons.plus_square),
           ),
         IconButton(
           onPressed: _loading ? null : _load,
           tooltip: 'Actualizar',
-          icon: const Icon(Icons.refresh),
+          icon: const Icon(CupertinoIcons.refresh),
         ),
       ],
     ),
@@ -179,7 +181,7 @@ class _CashScreenState extends State<CashScreen> {
                   Card(
                     color: context.dlc.criticalContainer,
                     child: ListTile(
-                      leading: const Icon(Icons.error_outline),
+                      leading: const Icon(CupertinoIcons.exclamationmark_circle),
                       title: Text(_error!),
                     ),
                   ),
@@ -194,8 +196,8 @@ class _CashScreenState extends State<CashScreen> {
                     child: ListTile(
                       leading: Icon(
                         open
-                            ? Icons.point_of_sale
-                            : Icons.point_of_sale_outlined,
+                            ? CupertinoIcons.creditcard
+                            : CupertinoIcons.creditcard,
                         color: open ? context.dlc.optimal : context.dlc.muted,
                       ),
                       title: Text(
@@ -208,7 +210,7 @@ class _CashScreenState extends State<CashScreen> {
                             : 'Sin turno abierto',
                       ),
                       trailing: open
-                          ? const Icon(Icons.chevron_right)
+                          ? const Icon(CupertinoIcons.chevron_right)
                           : widget.permissions.contains('cash.open')
                           ? TextButton(
                               onPressed: () => _open(r),
@@ -370,7 +372,7 @@ class _CashSessionPageState extends State<_CashSessionPage> {
         contentBuilder: (ctx, changed) => Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('Efectivo esperado: USD ${_str(_session['expectedCashUsd'])}'),
+            Text('Efectivo esperado: ${moneyRaw(_session['expectedCashUsd'])}'),
             LiveTextField(
               controller: cash,
               keyboardType: LiveTextField.decimal(),
@@ -444,10 +446,10 @@ class _CashSessionPageState extends State<_CashSessionPage> {
                   ),
                 Card(
                   child: ListTile(
-                    leading: const Icon(Icons.account_balance_wallet_outlined),
+                    leading: const Icon(CupertinoIcons.creditcard),
                     title: Text(_closed ? 'Turno cerrado' : 'Turno abierto'),
                     subtitle: Text(
-                      'Fondo inicial USD ${_str(_session['openingUsd'])}\nEfectivo esperado USD ${_str(_session['expectedCashUsd'])}',
+                      'Fondo inicial ${moneyRaw(_session['openingUsd'])}\nEfectivo esperado ${moneyRaw(_session['expectedCashUsd'])}',
                     ),
                   ),
                 ),
@@ -461,7 +463,7 @@ class _CashSessionPageState extends State<_CashSessionPage> {
                     padding: const EdgeInsets.only(top: 8, bottom: 16),
                     child: FilledButton.icon(
                       onPressed: () => _checkout(),
-                      icon: const Icon(Icons.shopping_cart_checkout),
+                      icon: const Icon(CupertinoIcons.cart),
                       label: const Text('Nueva venta POS'),
                     ),
                   ),
@@ -479,9 +481,9 @@ class _CashSessionPageState extends State<_CashSessionPage> {
                 ..._movements.map(
                   (m) => Card(
                     child: ListTile(
-                      leading: const Icon(Icons.receipt_long_outlined),
+                      leading: const Icon(CupertinoIcons.doc_text),
                       title: Text(
-                        '${_str(m['kind'])} · USD ${_str(m['amountUsd'] ?? m['deltaUsd'])}',
+                        '${_str(m['kind'])} · ${moneyRaw(m['amountUsd'] ?? m['deltaUsd'])}',
                       ),
                       subtitle: Text(_str(m['reason'])),
                     ),
@@ -492,7 +494,7 @@ class _CashSessionPageState extends State<_CashSessionPage> {
                     padding: const EdgeInsets.only(top: 8),
                     child: OutlinedButton.icon(
                       onPressed: _movement,
-                      icon: const Icon(Icons.swap_horiz),
+                      icon: const Icon(CupertinoIcons.arrow_swap),
                       label: const Text('Registrar movimiento'),
                     ),
                   ),
@@ -501,14 +503,14 @@ class _CashSessionPageState extends State<_CashSessionPage> {
                     padding: const EdgeInsets.only(top: 8),
                     child: FilledButton.icon(
                       onPressed: _close,
-                      icon: const Icon(Icons.lock_outline),
+                      icon: const Icon(CupertinoIcons.lock),
                       label: const Text('Cerrar y cuadrar turno'),
                     ),
                   ),
                 if (_closed)
                   const Card(
                     child: ListTile(
-                      leading: Icon(Icons.verified_outlined),
+                      leading: Icon(CupertinoIcons.checkmark_seal),
                       title: Text('El turno ya se cerró'),
                       subtitle: Text(
                         'La revisión de variaciones queda disponible según tus permisos.',
@@ -658,7 +660,7 @@ class _PosCheckoutScreenState extends State<_PosCheckoutScreen> {
           decoration: InputDecoration(
             labelText: 'Código QR de Cliente (opcional)',
             helperText: helperText,
-            prefixIcon: const Icon(Icons.qr_code_2),
+            prefixIcon: const Icon(CupertinoIcons.qrcode),
           ),
         ),
       ),
@@ -668,7 +670,7 @@ class _PosCheckoutScreenState extends State<_PosCheckoutScreen> {
         child: IconButton.filledTonal(
           onPressed: _busy ? null : _scanCustomerQr,
           tooltip: 'Escanear QR del Cliente',
-          icon: const Icon(Icons.qr_code_scanner),
+          icon: const Icon(CupertinoIcons.qrcode_viewfinder),
         ),
       ),
     ],
@@ -1135,7 +1137,7 @@ class _PosCheckoutScreenState extends State<_PosCheckoutScreen> {
                   Card(
                     color: context.dlc.criticalContainer,
                     child: ListTile(
-                      leading: const Icon(Icons.error_outline),
+                      leading: const Icon(CupertinoIcons.exclamationmark_circle),
                       title: Text(_error!),
                     ),
                   ),
@@ -1144,7 +1146,7 @@ class _PosCheckoutScreenState extends State<_PosCheckoutScreen> {
                     color: context.dlc.optimalContainer,
                     child: ListTile(
                       leading: Icon(
-                        Icons.check_circle_outline,
+                        CupertinoIcons.checkmark_circle,
                         color: context.dlc.optimal,
                       ),
                       title: Text(_notice!),
@@ -1196,12 +1198,12 @@ class _PosCheckoutScreenState extends State<_PosCheckoutScreen> {
                           child: ListTile(
                             title: Text(_str(p['description'])),
                             subtitle: Text(
-                              '${_str(p['category'])} · USD ${_str(p['priceUsd'])}${service ? '' : ' · Disponibles: ${_str(p['availableUnits'])}'}',
+                              '${_str(p['category'])} · ${moneyRaw(p['priceUsd'])}${service ? '' : ' · Disponibles: ${_str(p['availableUnits'])}'}',
                             ),
                             leading: Icon(
                               service
-                                  ? Icons.build_outlined
-                                  : Icons.inventory_2_outlined,
+                                  ? CupertinoIcons.wrench
+                                  : CupertinoIcons.cube_box,
                             ),
                             trailing: IconButton(
                               onPressed: (!_busy && !service && units < 1)
@@ -1209,7 +1211,7 @@ class _PosCheckoutScreenState extends State<_PosCheckoutScreen> {
                                   : () => setState(
                                       () => _cart[id] = (_cart[id] ?? 0) + 1,
                                     ),
-                              icon: const Icon(Icons.add_circle_outline),
+                              icon: const Icon(CupertinoIcons.plus_circle),
                             ),
                           ),
                         );
@@ -1229,7 +1231,7 @@ class _PosCheckoutScreenState extends State<_PosCheckoutScreen> {
                                 ? _cart.remove(entry.key)
                                 : _cart[entry.key] = entry.value - 1,
                           ),
-                          icon: const Icon(Icons.remove_circle_outline),
+                          icon: const Icon(CupertinoIcons.minus_circle),
                         ),
                       );
                     }),
@@ -1239,7 +1241,7 @@ class _PosCheckoutScreenState extends State<_PosCheckoutScreen> {
                     ),
                     FilledButton.icon(
                       onPressed: _busy ? null : _createSale,
-                      icon: const Icon(Icons.save_outlined),
+                      icon: const Icon(CupertinoIcons.tray_arrow_down),
                       label: Text(_busy ? 'Guardando…' : 'Crear venta'),
                     ),
                   ],
@@ -1247,9 +1249,9 @@ class _PosCheckoutScreenState extends State<_PosCheckoutScreen> {
                   _cardTitle('Venta registrada'),
                   Card(
                     child: ListTile(
-                      leading: const Icon(Icons.receipt_long_outlined),
+                      leading: const Icon(CupertinoIcons.doc_text),
                       title: Text(
-                        'USD ${_str(_sale!['totalUsd'])}',
+                        '${moneyRaw(_sale!['totalUsd'])}',
                         style: const TextStyle(
                           fontSize: 22,
                           fontWeight: FontWeight.bold,
@@ -1266,14 +1268,14 @@ class _PosCheckoutScreenState extends State<_PosCheckoutScreen> {
                     if (_customerCode.text.trim().isNotEmpty)
                       OutlinedButton.icon(
                         onPressed: _busy ? null : _linkCustomer,
-                        icon: const Icon(Icons.person_add_alt_1),
+                        icon: const Icon(CupertinoIcons.person_add),
                         label: const Text('Vincular Cliente antes del cobro'),
                       ),
                   ],
                   if (_customerLinked) ...[
                     ListTile(
                       leading: Icon(
-                        Icons.verified_user_outlined,
+                        CupertinoIcons.checkmark_shield,
                         color: context.dlc.optimal,
                       ),
                       title: Text('Cliente vinculado a esta venta'),
@@ -1283,17 +1285,17 @@ class _PosCheckoutScreenState extends State<_PosCheckoutScreen> {
                         !_resolutionSending)
                       OutlinedButton.icon(
                         onPressed: _busy ? null : _requestPoints,
-                        icon: const Icon(Icons.stars_outlined),
+                        icon: const Icon(CupertinoIcons.star),
                         label: const Text('Solicitar pago con puntos'),
                       ),
                     if (!_alreadyPaid)
                       Text(
-                        'Saldo pendiente: USD ${_str(_sale!['outstandingUsd'] ?? _sale!['totalUsd'])}',
+                        'Saldo pendiente: ${moneyRaw(_sale!['outstandingUsd'] ?? _sale!['totalUsd'])}',
                       ),
                     if (!_alreadyPaid)
                       TextButton.icon(
                         onPressed: _busy ? null : _refreshSale,
-                        icon: const Icon(Icons.refresh),
+                        icon: const Icon(CupertinoIcons.refresh),
                         label: const Text('Actualizar saldo de venta'),
                       ),
                   ],
@@ -1301,7 +1303,7 @@ class _PosCheckoutScreenState extends State<_PosCheckoutScreen> {
                     Card(
                       color: context.dlc.mediumContainer,
                       child: ListTile(
-                        leading: const Icon(Icons.sync_problem),
+                        leading: const Icon(CupertinoIcons.arrow_2_circlepath),
                         title: const Text(
                           'Verifica el saldo antes de otro cobro',
                         ),
@@ -1317,32 +1319,32 @@ class _PosCheckoutScreenState extends State<_PosCheckoutScreen> {
                   if (_alreadyPaid) ...[
                     FilledButton.icon(
                       onPressed: _busy ? null : _shareReceipt,
-                      icon: const Icon(Icons.picture_as_pdf_outlined),
+                      icon: const Icon(CupertinoIcons.doc_richtext),
                       label: const Text('Compartir comprobante PDF'),
                     ),
                     OutlinedButton.icon(
                       onPressed: () => Navigator.pop(context, true),
-                      icon: const Icon(Icons.check_circle_outline),
+                      icon: const Icon(CupertinoIcons.checkmark_circle),
                       label: const Text('Volver a caja'),
                     ),
                   ],
                   if (_paymentSending)
                     FilledButton.icon(
                       onPressed: _busy ? null : _retryPayment,
-                      icon: const Icon(Icons.sync),
+                      icon: const Icon(CupertinoIcons.arrow_2_circlepath),
                       label: const Text('Reintentar cobro anterior'),
                     ),
                   if (_resolutionSending)
                     FilledButton.icon(
                       onPressed: _busy ? null : _retryResolution,
-                      icon: const Icon(Icons.sync),
+                      icon: const Icon(CupertinoIcons.arrow_2_circlepath),
                       label: const Text('Reintentar conciliación'),
                     ),
                   if (_pendingAttempt != null && !_resolutionSending)
                     Card(
                       color: context.dlc.mediumContainer,
                       child: ListTile(
-                        leading: const Icon(Icons.help_outline),
+                        leading: const Icon(CupertinoIcons.question_circle),
                         title: const Text('Cobro con resultado incierto'),
                         subtitle: Text('Intento ${_pendingAttempt!}'),
                         trailing: TextButton(
@@ -1358,7 +1360,7 @@ class _PosCheckoutScreenState extends State<_PosCheckoutScreen> {
                       !_tenderStatusUnknown)
                     FilledButton.icon(
                       onPressed: _busy ? null : _collect,
-                      icon: const Icon(Icons.payments_outlined),
+                      icon: const Icon(CupertinoIcons.money_dollar_circle),
                       label: const Text('Registrar cobro'),
                     ),
                   if (_busy) const Center(child: CircularProgressIndicator()),

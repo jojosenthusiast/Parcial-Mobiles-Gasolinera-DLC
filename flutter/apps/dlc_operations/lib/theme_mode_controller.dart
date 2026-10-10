@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 
 /// Storage boundary for the theme preference (maps to a protocol in Swift).
 abstract class ThemePreferenceStore {
@@ -55,9 +56,9 @@ String themeModeLabel(ThemeMode mode) => switch (mode) {
 };
 
 IconData themeModeIcon(ThemeMode mode) => switch (mode) {
-  ThemeMode.light => Icons.light_mode_outlined,
-  ThemeMode.dark => Icons.dark_mode_outlined,
-  ThemeMode.system => Icons.brightness_auto_outlined,
+  ThemeMode.light => CupertinoIcons.sun_max,
+  ThemeMode.dark => CupertinoIcons.moon,
+  ThemeMode.system => CupertinoIcons.brightness,
 };
 
 class ThemeModeController extends ChangeNotifier {

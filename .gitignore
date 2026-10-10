@@ -32,3 +32,13 @@ server/render.env.local
 /scripts/verify-acceptance-matrix.mjs
 /scripts/verify-release.mjs
 /scripts/package-release.mjs
+web/render.env.local
+
+# third-party design skills (local only)
+/.claude/skills/
+
+# QA workers / customer: generated SQL with hashes and plaintext credentials
+server/scripts/sql/qa-workers.generated.sql
+server/scripts/sql/qa-workers-rotate.generated.sql
+server/.qa-workers-credentials.local.txt*
+server/.qa-customer-credentials.local.txt*

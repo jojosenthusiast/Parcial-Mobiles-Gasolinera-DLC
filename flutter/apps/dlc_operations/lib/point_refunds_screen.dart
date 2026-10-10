@@ -1,5 +1,7 @@
 import 'package:dlc_api/dlc_api.dart';
 import 'package:flutter/material.dart';
+import 'format.dart';
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 
 class PointRefundsScreen extends StatefulWidget {
  const PointRefundsScreen({required this.api,required this.branchId,required this.permissions,super.key});
@@ -29,11 +31,11 @@ class _PointRefundsScreenState extends State<PointRefundsScreen> {
  }
  List<Map<String,dynamic>> rows(String key)=>(detail?[key] as List<dynamic>? ?? const[]).whereType<Map<String,dynamic>>().toList();
  @override Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:const Text('Devoluciones de puntos')),body:ListView(padding:const EdgeInsets.all(16),children:[
-  TextField(controller:search,decoration:InputDecoration(labelText:'Buscar venta por folio o descripción',suffixIcon:IconButton(onPressed:busy?null:loadSales,icon:const Icon(Icons.search))),onSubmitted:(_)=>loadSales()),
+  TextField(controller:search,decoration:InputDecoration(labelText:'Buscar venta por folio o descripción',suffixIcon:IconButton(onPressed:busy?null:loadSales,icon:const Icon(CupertinoIcons.search))),onSubmitted:(_)=>loadSales()),
   if(busy)const LinearProgressIndicator(),if(error!=null)Text(error!,style:TextStyle(color:Theme.of(context).colorScheme.error)),
-  if(saleId==null)...sales.map((s)=>ListTile(title:Text('${s['code']??s['description']??s['id']}'),subtitle:Text('USD ${s['totalUsd']??s['total_usd']??'—'}'),trailing:const Icon(Icons.chevron_right),onTap:busy?null:()=>load('${s['id']}')))
+  if(saleId==null)...sales.map((s)=>ListTile(title:Text('${s['code']??s['description']??s['id']}'),subtitle:Text('${moneyRaw(s['totalUsd']??s['total_usd'])}'),trailing:const Icon(CupertinoIcons.chevron_right),onTap:busy?null:()=>load('${s['id']}')))
   else ...[TextButton(onPressed:busy?null:()=>setState((){saleId=null;detail=null;}),child:const Text('Volver a ventas')),Text('Venta $saleId'),
-   ...rows('payments').map((p)=>Card(child:ListTile(title:Text('${p['points']} puntos · USD ${p['amountUsd']}'),subtitle:Text('Devueltos: ${p['returnedPoints']} puntos'),trailing:widget.permissions.contains('sale.refund.request')?TextButton(onPressed:busy?null:()=>command(p,false),child:const Text('Solicitar')):null))),
+   ...rows('payments').map((p)=>Card(child:ListTile(title:Text('${p['points']} puntos · ${moneyRaw(p['amountUsd'])}'),subtitle:Text('Devueltos: ${p['returnedPoints']} puntos'),trailing:widget.permissions.contains('sale.refund.request')?TextButton(onPressed:busy?null:()=>command(p,false),child:const Text('Solicitar')):null))),
    ...rows('requests').map((r)=>Card(child:ListTile(title:Text('${r['points']} puntos · ${r['decision']??'Pendiente'}'),subtitle:Text('${r['reason']}'),trailing:r['decision']==null&&widget.permissions.contains('payment.refund')?TextButton(onPressed:busy?null:()=>command(r,true),child:const Text('Decidir')):null))),
    if(detail!=null&&rows('payments').isEmpty)const Text('Esta venta no tiene pagos con puntos.'),
   ],

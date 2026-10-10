@@ -598,7 +598,7 @@ export class InfrastructureService {
            FROM dispense_authorizations WHERE id=$1 AND branch_id=$2 AND organization_id=$3 FOR UPDATE`,[authorizationId,branchId,principal.organizationId]);
       if(!auth.rows[0]||auth.rows[0].status!=='posting'||auth.rows[0].completion_hash!==requestHash) throw new ConflictException('La autorización no coincide con el cierre pendiente.');
       await finalize.query(`UPDATE dispense_authorizations SET status='completed',inventory_movement_id=$2,completed_at=now(),version=version+1 WHERE id=$1`,[authorizationId,movement.movement.id]);
-      const completed=await finalize.query<{completed_at:string}>(`SELECT completed_at FROM dispense_authorizations WHERE id=$1`,[authorizationId]);
+      const completed=await finalize.query<{completed_at:string}>(`SELECT completed_at::text AS completed_at FROM dispense_authorizations WHERE id=$1`,[authorizationId]);
       const posted=auth.rows[0];
       const sale=await finalize.query<{id:string}>(
         `INSERT INTO sales(organization_id,branch_id,authorization_id,command_id,request_hash,total_usd,created_by,occurred_at,correlation_id)

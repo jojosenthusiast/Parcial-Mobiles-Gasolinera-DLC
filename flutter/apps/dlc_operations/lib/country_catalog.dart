@@ -1,5 +1,6 @@
 import 'package:dlc_api/dlc_api.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 
 /// Spanish display names for the countries DLC operates in or expects to.
 /// Unknown codes fall back to the ISO code itself.
@@ -134,7 +135,7 @@ class CountryDropdown extends StatelessWidget {
       isExpanded: true,
       decoration: InputDecoration(
         labelText: label,
-        prefixIcon: const Icon(Icons.public),
+        prefixIcon: const Icon(CupertinoIcons.globe),
       ),
       items: [
         if (includeAll)

@@ -1,8 +1,12 @@
 import 'package:dlc_api/dlc_api.dart';
 import 'app_theme.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 
 import 'customer_qr_scanner_screen.dart';
+import 'dispense_logic.dart';
+import 'ui/kit.dart' show ToneChip;
+import 'ui/sheets.dart';
 import 'haptics.dart';
 import 'live_form.dart';
 import 'validators.dart';
@@ -284,7 +288,7 @@ class _DispenseScreenState extends State<DispenseScreen> {
                     setDialog(() => code.text = scanned);
                   }
                 },
-                icon: const Icon(Icons.qr_code_scanner),
+                icon: const Icon(CupertinoIcons.qrcode_viewfinder),
                 label: const Text('Escanear QR'),
               ),
             ],
@@ -305,6 +309,69 @@ class _DispenseScreenState extends State<DispenseScreen> {
     code.dispose();
     if (value == null || value.trim().isEmpty || !mounted) return;
     await widget.api.linkCustomerToSale(widget.branchId, saleId, value.trim());
+  }
+
+  Future<void> _recover(DispenseRecovery action) async {
+    final row = _authorization;
+    if (row == null) return;
+    final copy = recoveryCopy(action);
+    final id = _str(row['id']);
+    final version = _int(row['version']);
+    if (action == DispenseRecovery.reconcileNoFlow) {
+      final evidence = await showReasonSheet(
+        context,
+        title: copy.title,
+        message: copy.message,
+        fieldLabel: 'Referencia de evidencia',
+        confirmLabel: 'Siguiente',
+        minLength: 3,
+        maxLength: 120,
+      );
+      if (evidence == null || !mounted) return;
+      final reason = await showReasonSheet(
+        context,
+        title: copy.title,
+        message: 'Explica por qué se concluye que no hubo flujo.',
+        fieldLabel: 'Motivo',
+        confirmLabel: copy.confirm,
+      );
+      if (reason == null) return;
+      await _mutate(() async {
+        _authorization = await widget.api.reconcileDispenseNoFlow(
+          widget.branchId,
+          id,
+          version,
+          evidenceReference: evidence,
+          reason: reason,
+        );
+      });
+      return;
+    }
+    final reason = await showReasonSheet(
+      context,
+      title: copy.title,
+      message: copy.message,
+      fieldLabel: 'Motivo',
+      confirmLabel: copy.confirm,
+      destructive: copy.destructive,
+      minLength: 5,
+    );
+    if (reason == null) return;
+    await _mutate(() async {
+      _authorization = action == DispenseRecovery.cancel
+          ? await widget.api.cancelDispense(
+              widget.branchId,
+              id,
+              version,
+              reason: reason,
+            )
+          : await widget.api.markDispenseUnknown(
+              widget.branchId,
+              id,
+              version,
+              reason: reason,
+            );
+    });
   }
 
   Future<void> _mutate(Future<void> Function() fn) async {
@@ -332,7 +399,7 @@ class _DispenseScreenState extends State<DispenseScreen> {
           IconButton(
             onPressed: _loading ? null : _load,
             tooltip: 'Actualizar',
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(CupertinoIcons.refresh),
           ),
         ],
       ),
@@ -347,22 +414,22 @@ class _DispenseScreenState extends State<DispenseScreen> {
                     Card(
                       color: context.dlc.criticalContainer,
                       child: ListTile(
-                        leading: const Icon(Icons.error_outline),
+                        leading: const Icon(CupertinoIcons.exclamationmark_circle),
                         title: Text(_error!),
                       ),
                     ),
                   const Card(
                     child: ListTile(
-                      leading: Icon(Icons.info_outline),
-                      title: Text('Captura manual, sin control de hardware'),
+                      leading: Icon(CupertinoIcons.info_circle),
+                      title: Text('Captura manual'),
                       subtitle: Text(
-                        'Esta pantalla registra autorización y volumen verificado por el operador. No controla físicamente el surtidor ni sustituye una integración certificada.',
+                        'Aquí registras la autorización y el volumen que verificaste en el surtidor. La app no controla la bomba.',
                       ),
                     ),
                   ),
                   Card(
                     child: ListTile(
-                      leading: const Icon(Icons.water_drop_outlined),
+                      leading: const Icon(CupertinoIcons.drop),
                       title: Text(
                         _str(
                           widget.nozzle['fuelName'] ??
@@ -380,7 +447,7 @@ class _DispenseScreenState extends State<DispenseScreen> {
                         padding: const EdgeInsets.only(top: 12),
                         child: FilledButton.icon(
                           onPressed: _authorize,
-                          icon: const Icon(Icons.lock_open_outlined),
+                          icon: const Icon(CupertinoIcons.lock_open),
                           label: const Text('Autorizar volumen'),
                         ),
                       ),
@@ -391,12 +458,18 @@ class _DispenseScreenState extends State<DispenseScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              'Estado: $status',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w800,
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: ToneChip(
+                                label: dispenseStateInfo(status).label,
+                                tone: dispenseStateInfo(status).tone,
                               ),
                             ),
+                            if (dispenseStateInfo(status).hint.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 6),
+                                child: Text(dispenseStateInfo(status).hint),
+                              ),
                             Text(
                               'Reserva: ${_str(row['reservedLiters'] ?? row['reservedL'])} L · avance: ${_str(row['progressLiters'] ?? row['progressL'])} L',
                             ),
@@ -420,10 +493,20 @@ class _DispenseScreenState extends State<DispenseScreen> {
                                 child: FilledButton(
                                   onPressed: _complete,
                                   child: const Text(
-                                    'Capturar lectura final y cerrar',
+                                    'Registrar lectura final',
                                   ),
                                 ),
                               ),
+                            if (widget.permissions.contains('dispense.authorize'))
+                              for (final action in recoveriesFor(status))
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 8),
+                                  child: OutlinedButton(
+                                    key: Key('recover-${action.name}'),
+                                    onPressed: () => _recover(action),
+                                    child: Text(recoveryCopy(action).title),
+                                  ),
+                                ),
                             if (status == 'completed' &&
                                 widget.permissions.contains('sale.create'))
                               Padding(

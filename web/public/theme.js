@@ -2,7 +2,7 @@
 (function () {
   var KEY = 'dlc.theme';
   var root = document.documentElement;
-  var colors = { light: '#f5f1e7', dark: '#0e1512' };
+  var colors = { light: '#faf5ec', dark: '#14110f' };
 
   function read() {
     try {

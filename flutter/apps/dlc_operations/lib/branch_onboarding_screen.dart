@@ -1,6 +1,7 @@
 import 'package:dlc_api/dlc_api.dart';
 import 'app_theme.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'infrastructure_setup_screen.dart';
 import 'staff_shifts_screen.dart';
 import 'branch_prices_screen.dart';
@@ -299,7 +300,7 @@ class _BranchOnboardingScreenState extends State<BranchOnboardingScreen> {
         IconButton(
           onPressed: _loading ? null : _load,
           tooltip: 'Actualizar',
-          icon: const Icon(Icons.refresh),
+          icon: const Icon(CupertinoIcons.refresh),
         ),
       ],
     ),
@@ -314,7 +315,7 @@ class _BranchOnboardingScreenState extends State<BranchOnboardingScreen> {
                   Card(
                     color: context.dlc.criticalContainer,
                     child: ListTile(
-                      leading: const Icon(Icons.error_outline),
+                      leading: const Icon(CupertinoIcons.exclamationmark_circle),
                       title: Text(_error!),
                     ),
                   ),
@@ -426,7 +427,7 @@ class _BranchOnboardingScreenState extends State<BranchOnboardingScreen> {
                   const SizedBox(height: 12),
                   FilledButton.icon(
                     onPressed: _saving || !_draftValid ? null : _create,
-                    icon: const Icon(Icons.add_business),
+                    icon: const Icon(CupertinoIcons.plus_app),
                     label: Text(_saving ? 'Creando…' : 'Crear y configurar'),
                   ),
                   const SizedBox(height: 20),
@@ -443,12 +444,12 @@ class _BranchOnboardingScreenState extends State<BranchOnboardingScreen> {
                   ..._drafts.map(
                     (b) => Card(
                       child: ListTile(
-                        leading: const Icon(Icons.store_outlined),
+                        leading: const Icon(CupertinoIcons.bag),
                         title: Text(b.name),
                         subtitle: Text(
                           '${b.code} · ${countryName(b.countryCode)} · versión ${b.onboardingVersion}',
                         ),
-                        trailing: const Icon(Icons.chevron_right),
+                        trailing: const Icon(CupertinoIcons.chevron_right),
                         onTap: () => _load(branchId: b.id),
                       ),
                     ),
@@ -465,13 +466,13 @@ class _BranchOnboardingScreenState extends State<BranchOnboardingScreen> {
                       IconButton(
                         onPressed: () => setState(() => _selected = null),
                         tooltip: 'Volver a borradores',
-                        icon: const Icon(Icons.list),
+                        icon: const Icon(CupertinoIcons.list_bullet),
                       ),
                     ],
                   ),
                   Card(
                     child: ListTile(
-                      leading: const Icon(Icons.storefront_outlined),
+                      leading: const Icon(CupertinoIcons.bag),
                       title: Text(
                         'Código ${_str(_detail['code'])} · ${_str(_detail['status']).isEmpty ? 'draft' : _str(_detail['status'])}',
                       ),
@@ -493,7 +494,7 @@ class _BranchOnboardingScreenState extends State<BranchOnboardingScreen> {
                     ),
                   Card(
                     child: ListTile(
-                      leading: const Icon(Icons.fact_check_outlined),
+                      leading: const Icon(CupertinoIcons.checkmark_rectangle),
                       title: Text(
                         _readiness['canActivate'] == true
                             ? 'Lista para activar'
@@ -508,7 +509,7 @@ class _BranchOnboardingScreenState extends State<BranchOnboardingScreen> {
                   _action(
                     'Combustibles, tanques y dispensadores',
                     'Configura oferta, tanques, mangueras y saldo inicial.',
-                    Icons.local_gas_station_outlined,
+                    CupertinoIcons.gauge,
                     _permissions.contains('infrastructure.read')
                         ? _openInfrastructure
                         : null,
@@ -516,13 +517,13 @@ class _BranchOnboardingScreenState extends State<BranchOnboardingScreen> {
                   _action(
                     'Personal',
                     'Registra empleados activos antes de activar.',
-                    Icons.groups_outlined,
+                    CupertinoIcons.person_3,
                     _permissions.contains('staff.read') ? _openStaff : null,
                   ),
                   _action(
                     'Precios vigentes',
                     'Propón, aprueba con otra persona y programa cada precio.',
-                    Icons.sell_outlined,
+                    CupertinoIcons.tag,
                     _permissions.contains('price.read') ? _openPrices : null,
                   ),
                   if (_permissions.contains('staff.manage'))
@@ -530,7 +531,7 @@ class _BranchOnboardingScreenState extends State<BranchOnboardingScreen> {
                       padding: const EdgeInsets.only(top: 8),
                       child: OutlinedButton.icon(
                         onPressed: _saving ? null : _confirmStaff,
-                        icon: const Icon(Icons.verified_outlined),
+                        icon: const Icon(CupertinoIcons.checkmark_seal),
                         label: const Text('Confirmar revisión del personal'),
                       ),
                     ),
@@ -544,7 +545,7 @@ class _BranchOnboardingScreenState extends State<BranchOnboardingScreen> {
                     return Card(
                       child: ListTile(
                         leading: Icon(
-                          Icons.pending_actions,
+                          CupertinoIcons.clock,
                           color: context.dlc.warning,
                         ),
                         title: Text(_str(row['message'])),
@@ -560,7 +561,7 @@ class _BranchOnboardingScreenState extends State<BranchOnboardingScreen> {
                       onPressed: _saving || _readiness['canActivate'] != true
                           ? null
                           : _activate,
-                      icon: const Icon(Icons.check_circle_outline),
+                      icon: const Icon(CupertinoIcons.checkmark_circle),
                       label: Text(_saving ? 'Guardando…' : 'Activar sucursal'),
                     ),
                   if (_readiness['canActivate'] != true)
@@ -588,7 +589,7 @@ class _BranchOnboardingScreenState extends State<BranchOnboardingScreen> {
       leading: Icon(icon),
       title: Text(title),
       subtitle: Text(detail),
-      trailing: const Icon(Icons.chevron_right),
+      trailing: const Icon(CupertinoIcons.chevron_right),
       onTap: action,
     ),
   );

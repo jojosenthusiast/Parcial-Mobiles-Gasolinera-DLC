@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'app_theme.dart';
 import 'haptics.dart';
 import 'validators.dart';
 
@@ -108,21 +109,105 @@ class ValidatedFormDialog extends StatefulWidget {
 }
 
 class _ValidatedFormDialogState extends State<ValidatedFormDialog> {
+  /// Rendered as a bottom sheet (DESIGN.md: forms never use AlertDialog). It
+  /// works inside `showDialog` or inline: the blank area closes it.
   @override
-  Widget build(BuildContext context) => AlertDialog(
-    title: Text(widget.title),
-    content: SingleChildScrollView(
-      child: widget.contentBuilder(context, () => setState(() {})),
-    ),
-    actions: [
-      TextButton(
-        onPressed: widget.onCancel ?? () => Navigator.pop(context),
-        child: Text(widget.cancelLabel),
-      ),
-      FilledButton(
-        onPressed: widget.isValid() ? widget.onSubmit : null,
-        child: Text(widget.submitLabel),
-      ),
-    ],
-  );
+  Widget build(BuildContext context) {
+    final colors = context.dlc;
+    final inset = MediaQuery.viewInsetsOf(context).bottom;
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onTap: widget.onCancel ?? () => Navigator.maybePop(context),
+          ),
+        ),
+        Align(
+          alignment: Alignment.bottomCenter,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: 640,
+              maxHeight: MediaQuery.sizeOf(context).height * .92,
+            ),
+            child: Material(
+              color: colors.surface,
+              elevation: 8,
+              clipBehavior: Clip.antiAlias,
+              shape: const RoundedRectangleBorder(
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: Padding(
+                padding: EdgeInsets.only(bottom: inset),
+                child: SafeArea(
+                  top: false,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Center(
+                        child: Container(
+                          margin: const EdgeInsets.only(top: 10, bottom: 6),
+                          width: 36,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: colors.borderStrong,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+                        child: Semantics(
+                          header: true,
+                          child: Text(
+                            widget.title,
+                            style: Theme.of(context).textTheme.titleLarge,
+                          ),
+                        ),
+                      ),
+                      Flexible(
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+                          child: widget.contentBuilder(
+                            context,
+                            () => setState(() {}),
+                          ),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 4, 20, 14),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed:
+                                    widget.onCancel ??
+                                    () => Navigator.pop(context),
+                                child: Text(widget.cancelLabel),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              flex: 2,
+                              child: FilledButton(
+                                onPressed: widget.isValid()
+                                    ? widget.onSubmit
+                                    : null,
+                                child: Text(widget.submitLabel),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }

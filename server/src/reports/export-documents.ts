@@ -83,7 +83,11 @@ export async function serializeReportXlsx(
 ): Promise<Buffer> {
   const sheetRows: string[] = [];
   const addRow = (rowNumber: number, values: readonly unknown[]) => {
-    const cells = values.map((value, index) => `<c r="${columnName(index)}${rowNumber}" t="inlineStr"><is><t xml:space="preserve">${xml(value)}</t></is></c>`).join('');
+    const cells = values.map((value, index) => {
+      const reference = `${columnName(index)}${rowNumber}`;
+      if (typeof value === 'number' && Number.isFinite(value)) return `<c r="${reference}"><v>${value}</v></c>`;
+      return `<c r="${reference}" t="inlineStr"><is><t xml:space="preserve">${xml(value)}</t></is></c>`;
+    }).join('');
     sheetRows.push(`<row r="${rowNumber}">${cells}</row>`);
   };
   addRow(1, ['Reporte', document.title]);
@@ -113,8 +117,16 @@ export async function serializeReportXlsx(
   return workbook;
 }
 
-function pdfAscii(value: unknown): string {
-  return display(value).normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^\x20-\x7E]/g, '?');
+const pdfWinAnsiExtras = new Map([
+  ['€', '\x80'], ['‚', '\x82'], ['ƒ', '\x83'], ['„', '\x84'], ['…', '\x85'], ['†', '\x86'], ['‡', '\x87'],
+  ['ˆ', '\x88'], ['‰', '\x89'], ['Š', '\x8A'], ['‹', '\x8B'], ['Œ', '\x8C'], ['Ž', '\x8E'], ['‘', '\x91'],
+  ['’', '\x92'], ['“', '\x93'], ['”', '\x94'], ['•', '\x95'], ['–', '\x96'], ['—', '\x97'], ['˜', '\x98'],
+  ['™', '\x99'], ['š', '\x9A'], ['›', '\x9B'], ['œ', '\x9C'], ['ž', '\x9E'], ['Ÿ', '\x9F'],
+]);
+
+function pdfWinAnsi(value: unknown): string {
+  return display(value).normalize('NFC').replace(/[€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ]/g, (character) => pdfWinAnsiExtras.get(character) ?? '?')
+    .replace(/[^\x20-\xFF]/g, '?');
 }
 
 function pdfEscape(value: string): string { return value.replaceAll('\\', '\\\\').replaceAll('(', '\\(').replaceAll(')', '\\)'); }
@@ -124,12 +136,12 @@ export async function serializeReportPdf(
   rows: readonly ReportRow[],
   onProgress?: (completed: number, total: number) => Promise<void>,
 ): Promise<Buffer> {
-  const textLines = [document.title, `Periodo: ${document.period}`, `Generado: ${pdfAscii(document.asOf)} (${document.timezone})`,
-    `Ultimo dato fuente: ${document.sourceWatermark ? pdfAscii(document.sourceWatermark) : 'Sin registros'}`,
-    `Registros: ${document.rowCount}`, '', document.columns.join(' | ')];
+  const textLines = [pdfWinAnsi(document.title), `Periodo: ${pdfWinAnsi(document.period)}`, `Generado: ${pdfWinAnsi(document.asOf)} (${pdfWinAnsi(document.timezone)})`,
+    `Ultimo dato fuente: ${document.sourceWatermark ? pdfWinAnsi(document.sourceWatermark) : 'Sin registros'}`,
+    `Registros: ${document.rowCount}`, '', document.columns.map((column) => pdfWinAnsi(column)).join(' | ')];
   for (let index = 0; index < rows.length; index += 1) {
     const row = rows[index]!;
-    const line = document.columns.map((column) => pdfAscii(row[column])).join(' | ');
+    const line = document.columns.map((column) => pdfWinAnsi(row[column])).join(' | ');
     for (let start = 0; start < Math.max(1, line.length); start += 100) textLines.push(line.slice(start, start + 100));
     if (onProgress && ((index + 1) % 250 === 0 || index === rows.length - 1)) {
       await onProgress(index + 1, rows.length);
@@ -148,22 +160,22 @@ export async function serializeReportPdf(
     const contentID = pageID + 1;
     const content = ['BT', '/F1 9 Tf', '42 750 Td', '12 TL', ...lines.flatMap((line) => [`(${pdfEscape(line)}) Tj`, 'T*']), 'ET'].join('\n');
     objects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents ${contentID} 0 R >>`);
-    objects.push(`<< /Length ${Buffer.byteLength(content, 'ascii')} >>\nstream\n${content}\nendstream`);
+    objects.push(`<< /Length ${Buffer.byteLength(content, 'latin1')} >>\nstream\n${content}\nendstream`);
   });
   let pdf = '%PDF-1.4\n%DLCR\n';
   const offsets = [0];
-  objects.forEach((object, index) => { offsets.push(Buffer.byteLength(pdf, 'ascii')); pdf += `${index + 1} 0 obj\n${object}\nendobj\n`; });
-  const xref = Buffer.byteLength(pdf, 'ascii');
+  objects.forEach((object, index) => { offsets.push(Buffer.byteLength(pdf, 'latin1')); pdf += `${index + 1} 0 obj\n${object}\nendobj\n`; });
+  const xref = Buffer.byteLength(pdf, 'latin1');
   pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
   for (const offset of offsets.slice(1)) pdf += `${String(offset).padStart(10, '0')} 00000 n \n`;
   pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
   if (onProgress && rows.length === 0) await onProgress(0, 0);
-  return Buffer.from(pdf, 'ascii');
+  return Buffer.from(pdf, 'latin1');
 }
 
 export async function serializeReceiptPdf(lines: readonly string[]): Promise<Buffer> {
   const textLines = lines.flatMap((line) => {
-    const value = pdfAscii(line);
+    const value = pdfWinAnsi(line);
     return Array.from({ length: Math.max(1, Math.ceil(value.length / 42)) }, (_, index) => value.slice(index * 42, (index + 1) * 42));
   });
   const pages: string[][] = [];
@@ -178,14 +190,14 @@ export async function serializeReceiptPdf(lines: readonly string[]): Promise<Buf
     const contentID = pageID + 1;
     const content = ['BT', '/F1 9 Tf', '18 770 Td', '12 TL', ...page.flatMap((line) => [`(${pdfEscape(line)}) Tj`, 'T*']), 'ET'].join('\n');
     objects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 800] /Resources << /Font << /F1 3 0 R >> >> /Contents ${contentID} 0 R >>`);
-    objects.push(`<< /Length ${Buffer.byteLength(content, 'ascii')} >>\nstream\n${content}\nendstream`);
+    objects.push(`<< /Length ${Buffer.byteLength(content, 'latin1')} >>\nstream\n${content}\nendstream`);
   });
   let pdf = '%PDF-1.4\n%DLCR\n';
   const offsets = [0];
-  objects.forEach((object, index) => { offsets.push(Buffer.byteLength(pdf, 'ascii')); pdf += `${index + 1} 0 obj\n${object}\nendobj\n`; });
-  const xref = Buffer.byteLength(pdf, 'ascii');
+  objects.forEach((object, index) => { offsets.push(Buffer.byteLength(pdf, 'latin1')); pdf += `${index + 1} 0 obj\n${object}\nendobj\n`; });
+  const xref = Buffer.byteLength(pdf, 'latin1');
   pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
   for (const offset of offsets.slice(1)) pdf += `${String(offset).padStart(10, '0')} 00000 n \n`;
   pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
-  return Buffer.from(pdf, 'ascii');
+  return Buffer.from(pdf, 'latin1');
 }

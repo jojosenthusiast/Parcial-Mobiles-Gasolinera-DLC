@@ -4,6 +4,7 @@ import 'live_form.dart';
 import 'validators.dart';
 import 'app_theme.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 
 class StaffShiftsScreen extends StatefulWidget {
   const StaffShiftsScreen({required this.api, required this.branchId, required this.permissions, super.key});
@@ -106,16 +107,16 @@ class _StaffShiftsScreenState extends State<StaffShiftsScreen> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('Personal y turnos'), actions: [
-      if (widget.permissions.contains('staff.manage')) IconButton(onPressed: loading ? null : _createEmployee, tooltip: 'Registrar empleado', icon: const Icon(Icons.person_add_alt_1)),
-      IconButton(onPressed: load, tooltip: 'Actualizar', icon: const Icon(Icons.refresh))]),
-    floatingActionButton: canPlan ? FloatingActionButton.extended(onPressed: loading ? null : _schedule, icon: const Icon(Icons.add), label: const Text('Programar turno')) : null,
+      if (widget.permissions.contains('staff.manage')) IconButton(onPressed: loading ? null : _createEmployee, tooltip: 'Registrar empleado', icon: const Icon(CupertinoIcons.person_add)),
+      IconButton(onPressed: load, tooltip: 'Actualizar', icon: const Icon(CupertinoIcons.refresh))]),
+    floatingActionButton: canPlan ? FloatingActionButton.extended(onPressed: loading ? null : _schedule, icon: const Icon(CupertinoIcons.add), label: const Text('Programar turno')) : null,
     body: loading ? const Center(child: CircularProgressIndicator()) : RefreshIndicator(onRefresh: load, child: ListView(padding: const EdgeInsets.all(16), children: [
-      if (error != null) Card(color: context.dlc.criticalContainer, child: ListTile(leading: const Icon(Icons.error_outline), title: Text(error!))),
-      Card(child: ListTile(leading: const Icon(Icons.groups_outlined), title: Text('${employees.length} empleados activos'), subtitle: const Text('La lista y la programación se consultan al servidor.'))),
+      if (error != null) Card(color: context.dlc.criticalContainer, child: ListTile(leading: const Icon(CupertinoIcons.exclamationmark_circle), title: Text(error!))),
+      Card(child: ListTile(leading: const Icon(CupertinoIcons.person_3), title: Text('${employees.length} empleados activos'), subtitle: const Text('La lista y la programación se consultan al servidor.'))),
       const SizedBox(height: 14),
       Text('Turnos · próximos 7 días', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
       const SizedBox(height: 8),
-      if (shifts.isEmpty) const Card(child: ListTile(leading: Icon(Icons.event_busy), title: Text('No hay turnos en este período.'))),
+      if (shifts.isEmpty) const Card(child: ListTile(leading: Icon(CupertinoIcons.calendar_badge_minus), title: Text('No hay turnos en este período.'))),
       ...shifts.map((shift) {
         final start = DateTime.tryParse(_str(shift['startsAt']))?.toLocal();
         final end = DateTime.tryParse(_str(shift['endsAt']))?.toLocal();
@@ -123,14 +124,14 @@ class _StaffShiftsScreenState extends State<StaffShiftsScreen> {
         final status = _str(shift['status']);
         final attendanceAction = widget.permissions.contains('staff.attendance.record') && status == 'scheduled'
           ? shift['clockedInAt'] == null
-            ? IconButton(tooltip: 'Marcar entrada', onPressed: () => _recordAttendance(shift, 'clock_in'), icon: const Icon(Icons.login))
+            ? IconButton(tooltip: 'Marcar entrada', onPressed: () => _recordAttendance(shift, 'clock_in'), icon: const Icon(CupertinoIcons.arrow_right_circle))
             : shift['clockedOutAt'] == null
-              ? IconButton(tooltip: 'Marcar salida', onPressed: () => _recordAttendance(shift, 'clock_out'), icon: const Icon(Icons.logout))
+              ? IconButton(tooltip: 'Marcar salida', onPressed: () => _recordAttendance(shift, 'clock_out'), icon: const Icon(CupertinoIcons.square_arrow_left))
               : null
           : null;
-        final actions = [if (attendanceAction != null) attendanceAction, if (canPlan && status == 'scheduled') IconButton(tooltip: 'Cancelar turno', onPressed: () => _cancel(shift), icon: const Icon(Icons.event_busy_outlined))];
+        final actions = [if (attendanceAction != null) attendanceAction, if (canPlan && status == 'scheduled') IconButton(tooltip: 'Cancelar turno', onPressed: () => _cancel(shift), icon: const Icon(CupertinoIcons.calendar_badge_minus))];
         return Padding(padding: const EdgeInsets.only(bottom: 8), child: Card(child: ListTile(
-          leading: const CircleAvatar(child: Icon(Icons.person_outline)),
+          leading: const CircleAvatar(child: Icon(CupertinoIcons.person)),
           title: Text(_str(shift['employeeName']), style: const TextStyle(fontWeight: FontWeight.w700)),
           subtitle: Text('$dateText\n${_position(_str(shift['position']))} · $status'), isThreeLine: true,
           trailing: actions.isEmpty ? null : Row(mainAxisSize: MainAxisSize.min, children: actions),
@@ -157,9 +158,9 @@ Future<_ShiftSelection?> _scheduleDialog(BuildContext context, List<Map<String, 
     title: const Text('Programar turno'), content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
       DropdownButtonFormField<String>(initialValue: employeeId, decoration: const InputDecoration(labelText: 'Empleado'), items: employees.map((e) => DropdownMenuItem(value: _str(e['id']), child: Text(_str(e['legalName']), overflow: TextOverflow.ellipsis))).toList(), onChanged: (v) => setState(() => employeeId = v ?? employeeId)),
       const SizedBox(height: 8), DropdownButtonFormField<String>(initialValue: position, decoration: const InputDecoration(labelText: 'Puesto'), items: const [DropdownMenuItem(value: 'manager', child: Text('Gerencia')), DropdownMenuItem(value: 'store', child: Text('Tienda')), DropdownMenuItem(value: 'maintenance', child: Text('Mantenimiento'))], onChanged: (v) => setState(() => position = v ?? position)),
-      ListTile(contentPadding: EdgeInsets.zero, title: const Text('Fecha'), subtitle: Text(_date(date)), trailing: const Icon(Icons.calendar_today), onTap: () async { final picked = await showDatePicker(context: context, initialDate: date, firstDate: DateTime(now.year, now.month, now.day), lastDate: DateTime(now.year + 2)); if (picked != null) setState(() => date = picked); }),
-      ListTile(contentPadding: EdgeInsets.zero, title: const Text('Inicio'), subtitle: Text(start.format(context)), trailing: const Icon(Icons.schedule), onTap: () async { final picked = await showTimePicker(context: context, initialTime: start); if (picked != null) setState(() => start = picked); }),
-      ListTile(contentPadding: EdgeInsets.zero, title: const Text('Fin'), subtitle: Text(end.format(context)), trailing: const Icon(Icons.schedule), onTap: () async { final picked = await showTimePicker(context: context, initialTime: end); if (picked != null) setState(() => end = picked); }),
+      ListTile(contentPadding: EdgeInsets.zero, title: const Text('Fecha'), subtitle: Text(_date(date)), trailing: const Icon(CupertinoIcons.calendar), onTap: () async { final picked = await showDatePicker(context: context, initialDate: date, firstDate: DateTime(now.year, now.month, now.day), lastDate: DateTime(now.year + 2)); if (picked != null) setState(() => date = picked); }),
+      ListTile(contentPadding: EdgeInsets.zero, title: const Text('Inicio'), subtitle: Text(start.format(context)), trailing: const Icon(CupertinoIcons.clock), onTap: () async { final picked = await showTimePicker(context: context, initialTime: start); if (picked != null) setState(() => start = picked); }),
+      ListTile(contentPadding: EdgeInsets.zero, title: const Text('Fin'), subtitle: Text(end.format(context)), trailing: const Icon(CupertinoIcons.clock), onTap: () async { final picked = await showTimePicker(context: context, initialTime: end); if (picked != null) setState(() => end = picked); }),
       const Text('La API valida el horario, el ámbito de la sucursal y los conflictos de turnos.'),
     ])), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Volver')), FilledButton(onPressed: () {
       final startsAt = DateTime(date.year, date.month, date.day, start.hour, start.minute);

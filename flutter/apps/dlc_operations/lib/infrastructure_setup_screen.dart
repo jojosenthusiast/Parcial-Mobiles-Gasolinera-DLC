@@ -3,6 +3,7 @@ import 'live_form.dart';
 import 'validators.dart';
 import 'app_theme.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 
 /// Configuración conectada a la API para combustibles e infraestructura física.
 /// El servidor mantiene autoridad sobre permisos, relaciones y saldos.
@@ -281,7 +282,7 @@ class _InfrastructureSetupScreenState extends State<InfrastructureSetupScreen> {
         actions: [
           IconButton(
             onPressed: load,
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(CupertinoIcons.refresh),
             tooltip: 'Actualizar',
           ),
         ],
@@ -297,7 +298,7 @@ class _InfrastructureSetupScreenState extends State<InfrastructureSetupScreen> {
                     Card(
                       color: context.dlc.criticalContainer,
                       child: ListTile(
-                        leading: const Icon(Icons.error_outline),
+                        leading: const Icon(CupertinoIcons.exclamationmark_circle),
                         title: Text(error!),
                       ),
                     ),
@@ -305,8 +306,8 @@ class _InfrastructureSetupScreenState extends State<InfrastructureSetupScreen> {
                     child: ListTile(
                       leading: Icon(
                         readiness['ready'] == true
-                            ? Icons.check_circle
-                            : Icons.pending_actions,
+                            ? CupertinoIcons.checkmark_circle
+                            : CupertinoIcons.clock,
                         color: readiness['ready'] == true
                             ? context.dlc.optimal
                             : context.dlc.warning,
@@ -324,7 +325,7 @@ class _InfrastructureSetupScreenState extends State<InfrastructureSetupScreen> {
                   const SizedBox(height: 14),
                   _section(
                     'Combustibles de la sucursal',
-                    Icons.local_gas_station,
+                    CupertinoIcons.gauge,
                     canManage ? () => _pickOffer() : null,
                     offers.isEmpty
                         ? [
@@ -339,7 +340,7 @@ class _InfrastructureSetupScreenState extends State<InfrastructureSetupScreen> {
                                 (p) => ListTile(
                                   dense: true,
                                   leading: const Icon(
-                                    Icons.oil_barrel_outlined,
+                                    CupertinoIcons.drop,
                                   ),
                                   title: Text(_str(p['displayName'])),
                                   subtitle: Text(
@@ -353,7 +354,7 @@ class _InfrastructureSetupScreenState extends State<InfrastructureSetupScreen> {
                   const SizedBox(height: 12),
                   _section(
                     'Tanques',
-                    Icons.opacity,
+                    CupertinoIcons.drop,
                     canPropose ? _newTank : null,
                     tanks.isEmpty
                         ? [
@@ -366,7 +367,7 @@ class _InfrastructureSetupScreenState extends State<InfrastructureSetupScreen> {
                                 balances[_str(tank['id'])]?['balance'] as Map?;
                             return ListTile(
                               dense: true,
-                              leading: const Icon(Icons.water_drop_outlined),
+                              leading: const Icon(CupertinoIcons.drop),
                               title: Text(
                                 '${_str(tank['code'])} · ${_str(tank['name'])}',
                               ),
@@ -377,7 +378,7 @@ class _InfrastructureSetupScreenState extends State<InfrastructureSetupScreen> {
                                   ? IconButton(
                                       tooltip: 'Registrar saldo inicial',
                                       onPressed: () => _opening(tank),
-                                      icon: const Icon(Icons.add_card),
+                                      icon: const Icon(CupertinoIcons.creditcard),
                                     )
                                   : null,
                             );
@@ -386,7 +387,7 @@ class _InfrastructureSetupScreenState extends State<InfrastructureSetupScreen> {
                   const SizedBox(height: 12),
                   _section(
                     'Dispensadores y boquillas',
-                    Icons.ev_station,
+                    CupertinoIcons.bolt_circle,
                     canPropose ? _newDispenser : null,
                     dispensers.isEmpty
                         ? [
@@ -398,7 +399,7 @@ class _InfrastructureSetupScreenState extends State<InfrastructureSetupScreen> {
                             final nozzles = _rows(d['nozzles']);
                             return Card(
                               child: ExpansionTile(
-                                leading: const Icon(Icons.ev_station),
+                                leading: const Icon(CupertinoIcons.bolt_circle),
                                 title: Text(
                                   '${_str(d['code'])} · ${_str(d['name']).isEmpty ? 'Sin nombre' : _str(d['name'])}',
                                 ),
@@ -409,7 +410,7 @@ class _InfrastructureSetupScreenState extends State<InfrastructureSetupScreen> {
                                   ...nozzles.map(
                                     (n) => ListTile(
                                       dense: true,
-                                      leading: const Icon(Icons.water),
+                                      leading: const Icon(CupertinoIcons.drop),
                                       title: Text(
                                         '${_str(n['code'])} · ${_str(n['productCode'])}',
                                       ),
@@ -436,7 +437,7 @@ class _InfrastructureSetupScreenState extends State<InfrastructureSetupScreen> {
                                       alignment: Alignment.centerRight,
                                       child: TextButton.icon(
                                         onPressed: () => _newNozzle(d),
-                                        icon: const Icon(Icons.add),
+                                        icon: const Icon(CupertinoIcons.add),
                                         label: const Text('Agregar boquilla'),
                                       ),
                                     ),
@@ -483,7 +484,7 @@ class _InfrastructureSetupScreenState extends State<InfrastructureSetupScreen> {
               if (add != null)
                 IconButton(
                   onPressed: add,
-                  icon: const Icon(Icons.add_circle_outline),
+                  icon: const Icon(CupertinoIcons.plus_circle),
                   tooltip: 'Agregar',
                 ),
             ],

@@ -32,7 +32,7 @@ export class BranchesService {
       await client.query('BEGIN');
       const inserted = await client.query(
         `INSERT INTO branches (organization_id,code,name,zone,timezone,country_code,onboarding_data)
-         VALUES ($1,$2,$3,$4,$5,$8,jsonb_build_object('identity',jsonb_build_object('code',$2,'name',$3,'zone',$4,'timezone',$5,'countryCode',$8::text),'template',$6,'expectedDispenserCount',$7))
+         VALUES ($1,$2,$3,$4,$5,$8,jsonb_build_object('identity',jsonb_build_object('code',$2::text,'name',$3::text,'zone',$4::text,'timezone',$5::text,'countryCode',$8::text),'template',$6,'expectedDispenserCount',$7))
          RETURNING id,code,name,zone,timezone,country_code AS "countryCode",status,onboarding_data AS "onboardingData",onboarding_version AS "onboardingVersion",created_at AS "createdAt",updated_at AS "updatedAt"`,
         [principal.organizationId, code, name, input.zone, input.timezone, profile, dispenserCount, countryCode],
       );

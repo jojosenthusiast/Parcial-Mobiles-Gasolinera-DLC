@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 
 import 'app_theme.dart';
 import 'tank_levels.dart';
@@ -124,7 +125,7 @@ class _TankLevelRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final status = level.status;
     final fg = status == null ? colors.muted : colors.foreground(status);
-    final icon = status?.icon ?? Icons.help_outline;
+    final icon = status?.icon ?? CupertinoIcons.question_circle;
     final percent = level.percent;
     final statusText = status == null
         ? 'Sin medición'
@@ -324,7 +325,7 @@ class TrendBarChart extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Icon(Icons.bar_chart_rounded, size: 20, color: base),
+                    Icon(CupertinoIcons.chart_bar, size: 20, color: base),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(

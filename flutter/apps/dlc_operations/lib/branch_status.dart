@@ -1,7 +1,9 @@
 import 'package:dlc_api/dlc_api.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 
 import 'app_theme.dart';
+import 'labels.dart';
 
 /// Branch lifecycle helpers. Branches created through onboarding start as
 /// `draft` and only `active` branches accept branch-scoped operational
@@ -9,7 +11,7 @@ import 'app_theme.dart';
 
 const kBranchStatusLabels = <String, String>{
   'draft': 'Borrador',
-  'configured': 'Configurada',
+  'configured': 'En configuración',
   'active': 'Activa',
   'suspended': 'Suspendida',
   'archived': 'Archivada',
@@ -18,7 +20,7 @@ const kBranchStatusLabels = <String, String>{
 String branchStatusLabel(String status) {
   final key = status.trim().toLowerCase();
   if (key.isEmpty) return 'Sin estado';
-  return kBranchStatusLabels[key] ?? key.replaceAll('_', ' ');
+  return kBranchStatusLabels[key] ?? statusLabel(key);
 }
 
 extension BranchSummaryStatus on BranchSummary {
@@ -87,29 +89,17 @@ String? technicalDetails(DlcApiException e) {
   return parts.isEmpty ? null : parts.join(' · ');
 }
 
-/// Small status pill for branch lists (non-active branches).
+/// Small status badge for branch lists (icon + Spanish label + tone).
 class BranchStatusChip extends StatelessWidget {
   const BranchStatusChip({required this.status, super.key});
   final String status;
   @override
-  Widget build(BuildContext context) {
-    final colors = context.dlc;
-    final inPreparation = status == 'draft' || status == 'configured';
-    final fg = inPreparation ? colors.warning : colors.critical;
-    return Container(
-      margin: const EdgeInsets.only(right: 4),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: inPreparation ? colors.warningContainer : colors.criticalContainer,
-        borderRadius: BorderRadius.circular(50),
-      ),
-      child: Text(
-        branchStatusLabel(status),
-        style: TextStyle(color: fg, fontSize: 11, fontWeight: FontWeight.w800),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(right: 4),
+    child: StatusBadge(status, compact: true),
+  );
 }
+
 /// In-context state shown instead of the raw error card when the selected
 /// branch is not operating yet.
 class BranchNotReadyPanel extends StatelessWidget {
@@ -134,7 +124,7 @@ class BranchNotReadyPanel extends StatelessWidget {
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
-            Icon(Icons.construction_outlined, size: 34, color: colors.warning),
+            Icon(CupertinoIcons.wrench, size: 34, color: colors.warning),
             const SizedBox(height: 10),
             Text(
               branch.name,
@@ -156,7 +146,7 @@ class BranchNotReadyPanel extends StatelessWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.warning_amber_rounded, size: 14, color: colors.warning),
+                  Icon(CupertinoIcons.exclamationmark_triangle, size: 14, color: colors.warning),
                   const SizedBox(width: 5),
                   Text(
                     branchStatusLabel(branch.status),
@@ -188,7 +178,7 @@ class BranchNotReadyPanel extends StatelessWidget {
               FilledButton.icon(
                 key: const Key('open-onboarding'),
                 onPressed: onOpenOnboarding,
-                icon: const Icon(Icons.add_business_outlined),
+                icon: const Icon(CupertinoIcons.plus_app),
                 label: const Text('Completar preparación'),
               ),
             ],
@@ -218,7 +208,7 @@ class NoActiveBranchesPanel extends StatelessWidget {
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
-            Icon(Icons.store_mall_directory_outlined, size: 34, color: colors.muted),
+            Icon(CupertinoIcons.bag, size: 34, color: colors.muted),
             const SizedBox(height: 10),
             Text(
               'Aún no hay sucursales activas',
@@ -240,7 +230,7 @@ class NoActiveBranchesPanel extends StatelessWidget {
               FilledButton.icon(
                 key: const Key('open-onboarding'),
                 onPressed: onOpenOnboarding,
-                icon: const Icon(Icons.add_business_outlined),
+                icon: const Icon(CupertinoIcons.plus_app),
                 label: const Text('Preparar una sucursal'),
               ),
             ],

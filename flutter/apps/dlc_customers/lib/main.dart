@@ -1,15 +1,25 @@
-import 'dart:ui' show PlatformDispatcher;
-import 'dart:convert';
 import 'dart:async';
+import 'dart:convert';
 import 'dart:developer' as developer;
 import 'dart:math';
+import 'dart:ui' show PlatformDispatcher;
 
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:qr_flutter/qr_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'haptics.dart';
+import 'ui/account_page.dart';
+import 'ui/benefits_page.dart';
+import 'ui/branches_page.dart';
+import 'ui/format.dart';
+import 'ui/home_page.dart';
+import 'ui/settings.dart';
+import 'ui/tokens.dart';
+import 'ui/widgets.dart';
+
+export 'ui/tokens.dart' show buildDlcTheme;
 
 const _apiUrl = String.fromEnvironment(
   'DLC_API_BASE_URL',
@@ -25,14 +35,6 @@ const _authRedirect = String.fromEnvironment(
   'SUPABASE_AUTH_REDIRECT_URL',
   defaultValue: 'sv.com.dlc.dlc_customers://login-callback/',
 );
-const _ink = Color(0xff213b32),
-    _orange = Color(0xffd94d24),
-    _paper = Color(0xfff5f0e5);
-// Dark-mode counterparts: lighter tones so brand colours keep contrast on dark surfaces.
-const _inkDark = Color(0xffa9d1bd),
-    _orangeDark = Color(0xffff8a5c),
-    _paperDark = Color(0xff111a16),
-    _cardDark = Color(0xff1d2a25);
 
 final _emailPattern = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
 
@@ -48,32 +50,6 @@ String? validatePassword(String? value) => (value ?? '').length < 8
 
 String? validateFullName(String? value) =>
     (value ?? '').trim().length < 2 ? 'Escribe tu nombre completo.' : null;
-
-/// Brand theme for one brightness. Light and dark share seed and component
-/// theming; only the palette differs.
-ThemeData buildDlcTheme(Brightness brightness) {
-  final dark = brightness == Brightness.dark;
-  final paper = dark ? _paperDark : _paper;
-  final scheme = ColorScheme.fromSeed(
-    seedColor: _ink,
-    brightness: brightness,
-    primary: dark ? _inkDark : _ink,
-    secondary: dark ? _orangeDark : _orange,
-  );
-  return ThemeData(
-    useMaterial3: true,
-    colorScheme: scheme,
-    scaffoldBackgroundColor: paper,
-    appBarTheme: AppBarTheme(
-      backgroundColor: paper,
-      foregroundColor: scheme.primary,
-    ),
-    cardTheme: CardThemeData(
-      color: dark ? _cardDark : Colors.white,
-      elevation: 0,
-    ),
-  );
-}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -110,35 +86,61 @@ class CustomerApp extends StatefulWidget {
 }
 
 class _CustomerAppState extends State<CustomerApp> {
-  // In-memory only: the choice resets when the app restarts.
-  ThemeMode _themeMode = ThemeMode.system;
+  // Preferences live in memory: the app has no local preference store yet.
+  final DlcSettings _settings = DlcSettings();
 
   @override
-  Widget build(BuildContext context) => MaterialApp(
-    title: 'DLC Clientes',
-    debugShowCheckedModeBanner: false,
-    theme: buildDlcTheme(Brightness.light),
-    darkTheme: buildDlcTheme(Brightness.dark),
-    themeMode: _themeMode,
-    home: (_supabaseUrl.isEmpty || _supabaseKey.isEmpty)
-        ? const ConfigurationScreen()
-        : CustomerRoot(
-            themeMode: _themeMode,
-            onThemeModeChanged: (mode) => setState(() => _themeMode = mode),
-          ),
+  void dispose() {
+    _settings.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: _settings,
+    builder: (context, _) => SettingsScope(
+      settings: _settings,
+      child: MaterialApp(
+        title: 'DLC Clientes',
+        debugShowCheckedModeBanner: false,
+        theme: buildDlcTheme(Brightness.light),
+        darkTheme: buildDlcTheme(Brightness.dark),
+        themeMode: _settings.themeMode,
+        themeAnimationDuration: const Duration(milliseconds: 200),
+        themeAnimationCurve: dlcEaseOut,
+        home: (_supabaseUrl.isEmpty || _supabaseKey.isEmpty)
+            ? const ConfigurationScreen()
+            : const CustomerRoot(),
+      ),
+    ),
   );
 }
 
 class ConfigurationScreen extends StatelessWidget {
   const ConfigurationScreen({super.key});
   @override
-  Widget build(BuildContext context) => const Scaffold(
-    body: Center(
-      child: Padding(
-        padding: EdgeInsets.all(28),
-        child: Text(
-          'Falta configuración de QA. Inicia la app con SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY y DLC_API_BASE_URL usando --dart-define.',
-          textAlign: TextAlign.center,
+  Widget build(BuildContext context) => Scaffold(
+    body: SafeArea(
+      child: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const BrandWordmark(height: 48),
+              const SizedBox(height: 20),
+              Icon(
+                CupertinoIcons.wrench,
+                size: 32,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Falta configuración de QA. Inicia la app con SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY y DLC_API_BASE_URL usando --dart-define.',
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
         ),
       ),
     ),
@@ -262,14 +264,26 @@ String _newId() {
   return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
 }
 
+/// Customer-facing Spanish text for the most common Supabase auth failures.
+String _authMessage(AuthException e) {
+  final text = e.message.toLowerCase();
+  if (text.contains('invalid login credentials')) {
+    return 'Correo o contraseña incorrectos. Revisa tus datos e inténtalo de nuevo.';
+  }
+  if (text.contains('email not confirmed')) {
+    return 'Aún no confirmas tu correo. Abre el enlace que te enviamos.';
+  }
+  if (text.contains('already registered') || text.contains('already exists')) {
+    return 'Ese correo ya tiene una cuenta. Inicia sesión.';
+  }
+  if (text.contains('rate limit') || text.contains('too many')) {
+    return 'Demasiados intentos. Espera un momento antes de volver a intentar.';
+  }
+  return e.message;
+}
+
 class CustomerRoot extends StatefulWidget {
-  const CustomerRoot({
-    super.key,
-    required this.themeMode,
-    required this.onThemeModeChanged,
-  });
-  final ThemeMode themeMode;
-  final ValueChanged<ThemeMode> onThemeModeChanged;
+  const CustomerRoot({super.key});
   @override
   State<CustomerRoot> createState() => _CustomerRootState();
 }
@@ -279,7 +293,6 @@ class _CustomerRootState extends State<CustomerRoot> {
   final TextEditingController branchSearch = TextEditingController();
   Session? get session => Supabase.instance.client.auth.currentSession;
   User? get user => Supabase.instance.client.auth.currentUser;
-  ColorScheme get _scheme => Theme.of(context).colorScheme;
   Map<String, dynamic>? profile;
   Map<String, dynamic>? loyalty;
   Map<String, dynamic>? qr;
@@ -293,10 +306,15 @@ class _CustomerRootState extends State<CustomerRoot> {
       pointPaymentQuotes = [];
   String unreadCount = '0';
   String? selectedPromotionBranchId;
-  bool busy = false, checking = true;
+  bool busy = false;
+  bool loading = true, loaded = false;
+  bool promotionsLoading = false;
+  bool balanceCounted = false;
   bool recoveringPassword = false;
-  String? error;
+  UiError? loadError, actionError;
+  DateTime? lastLoaded;
   int tab = 0;
+  int _inflight = 0;
   late final StreamSubscription<AuthState> authSubscription;
 
   @override
@@ -305,8 +323,19 @@ class _CustomerRootState extends State<CustomerRoot> {
     authSubscription = Supabase.instance.client.auth.onAuthStateChange.listen((
       state,
     ) {
-      if (state.event == AuthChangeEvent.passwordRecovery && mounted)
-        setState(() => recoveringPassword = true);
+      if (!mounted) return;
+      setState(() {
+        if (state.event == AuthChangeEvent.passwordRecovery) {
+          recoveringPassword = true;
+        }
+        // A fresh identity must not flash the previous one's screens.
+        if (state.event == AuthChangeEvent.signedOut ||
+            (state.event == AuthChangeEvent.signedIn && profile == null)) {
+          loaded = false;
+          balanceCounted = false;
+          tab = 0;
+        }
+      });
       unawaited(_reload());
     });
     _reload();
@@ -320,11 +349,24 @@ class _CustomerRootState extends State<CustomerRoot> {
     super.dispose();
   }
 
+  void _clearPrivateData() {
+    profile = null;
+    loyalty = null;
+    qr = null;
+    points = [];
+    notifications = [];
+    pointPaymentQuotes = [];
+    unreadCount = '0';
+  }
+
+  /// Reloads everything but keeps the previous data on screen: the skeleton
+  /// only shows before the first successful load.
   Future<void> _reload() async {
     if (!mounted) return;
+    _inflight++;
     setState(() {
-      checking = true;
-      error = null;
+      loading = true;
+      loadError = null;
     });
     try {
       final publicResults = await Future.wait([
@@ -359,31 +401,32 @@ class _CustomerRootState extends State<CustomerRoot> {
           pointPaymentQuotes = _maps(results[5]);
         } on CustomerApiError catch (e) {
           if (e.status == 404) {
-            profile = null;
-            loyalty = null;
-            qr = null;
-            points = [];
-            notifications = [];
-            pointPaymentQuotes = [];
-            unreadCount = '0';
+            _clearPrivateData();
           } else {
             rethrow;
           }
         }
       } else {
-        profile = null;
-        loyalty = null;
-        qr = null;
-        points = [];
-        notifications = [];
-        pointPaymentQuotes = [];
-        unreadCount = '0';
+        _clearPrivateData();
       }
+      loaded = true;
+      lastLoaded = DateTime.now();
     } on CustomerApiError catch (e) {
-      error =
-          '${e.message}${e.correlationId == null ? '' : '\nReferencia: ${e.correlationId}'}';
+      loadError = UiError(e.message, reference: e.correlationId);
+    } catch (e, stack) {
+      developer.log(
+        'Customer reload failure',
+        name: 'dlc.customer',
+        error: e.runtimeType,
+        stackTrace: stack,
+        level: 1000,
+      );
+      loadError = const UiError(
+        'No pudimos actualizar tus datos. Inténtalo de nuevo.',
+      );
     } finally {
-      if (mounted) setState(() => checking = false);
+      _inflight--;
+      if (mounted) setState(() => loading = _inflight > 0);
     }
   }
 
@@ -393,19 +436,19 @@ class _CustomerRootState extends State<CustomerRoot> {
     if (busy) return false;
     setState(() {
       busy = true;
-      error = null;
+      actionError = null;
     });
     try {
       await action();
       return true;
     } on AuthException catch (e) {
-      if (mounted) setState(() => error = e.message);
+      if (mounted) setState(() => actionError = UiError(_authMessage(e)));
     } on CustomerApiError catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(
-          () => error =
-              '${e.message}${e.correlationId == null ? '' : '\nReferencia: ${e.correlationId}'}',
+          () => actionError = UiError(e.message, reference: e.correlationId),
         );
+      }
     } catch (e, stack) {
       developer.log(
         'Customer flow failure',
@@ -414,10 +457,13 @@ class _CustomerRootState extends State<CustomerRoot> {
         stackTrace: stack,
         level: 1000,
       );
-      if (mounted)
+      if (mounted) {
         setState(
-          () => error = 'No se pudo completar esta acción. Intenta de nuevo.',
+          () => actionError = const UiError(
+            'No se pudo completar esta acción. Intenta de nuevo.',
+          ),
         );
+      }
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -433,88 +479,79 @@ class _CustomerRootState extends State<CustomerRoot> {
 
   @override
   Widget build(BuildContext context) {
-    if (checking)
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     final signedIn = session != null;
+    final ready = signedIn && profile != null && !recoveringPassword;
+    final banner = actionError != null
+        ? ErrorBanner(
+            error: actionError!,
+            onDismiss: () => setState(() => actionError = null),
+          )
+        : (loadError != null && (loaded || !signedIn))
+        ? ErrorBanner(
+            error: loadError!,
+            onRetry: loading ? null : _reload,
+            staleSince: loaded ? lastLoaded : null,
+          )
+        : null;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'DLC Clientes',
-          style: TextStyle(fontWeight: FontWeight.w800),
-        ),
-        actions: [
-          if (signedIn && profile != null)
-            IconButton(
-              tooltip: unreadCount == '0'
-                  ? 'Avisos'
-                  : '$unreadCount avisos sin leer',
-              onPressed: () => _openNotifications(),
-              icon: Badge(
-                isLabelVisible: unreadCount != '0',
-                label: Text(unreadCount),
-                child: const Icon(Icons.notifications_outlined),
-              ),
-            ),
-          if (signedIn)
-            IconButton(
-              tooltip: 'Cerrar sesión',
-              onPressed: busy ? null : _signOut,
-              icon: const Icon(Icons.logout),
-            ),
-        ],
-      ),
+      appBar: ready
+          ? AppBar(
+              centerTitle: false,
+              title: const BrandWordmark(height: 30),
+              actions: [
+                IconButton(
+                  tooltip: unreadCount == '0'
+                      ? 'Avisos'
+                      : '$unreadCount avisos sin leer',
+                  onPressed: () => _openNotifications(),
+                  icon: Badge(
+                    isLabelVisible: unreadCount != '0',
+                    label: Text(unreadCount),
+                    child: const Icon(CupertinoIcons.bell),
+                  ),
+                ),
+              ],
+            )
+          : null,
       body: SafeArea(
         child: Column(
           children: [
-            if (error != null) _errorBanner(context, error!),
-            Expanded(
-              child: recoveringPassword
-                  ? RecoveryPasswordScreen(
-                      busy: busy,
-                      onSubmit: (password) => _run(() async {
-                        await Supabase.instance.client.auth.updateUser(
-                          UserAttributes(password: password),
-                        );
-                        if (mounted) setState(() => recoveringPassword = false);
-                        await _reload();
-                      }),
-                    )
-                  : (!signedIn
-                        ? AuthScreen(
-                            busy: busy,
-                            onAction: _run,
-                            onChanged: _reload,
-                          )
-                        : (profile == null
-                              ? ProfileScreen(
-                                  busy: busy,
-                                  onSubmit: _saveProfile,
-                                )
-                              : _signedBody())),
-            ),
+            ?banner,
+            Expanded(child: _body(signedIn)),
           ],
         ),
       ),
-      bottomNavigationBar: signedIn && profile != null
+      bottomNavigationBar: ready
           ? NavigationBar(
               selectedIndex: tab,
-              onDestinationSelected: (v) => setState(() => tab = v),
+              onDestinationSelected: (v) {
+                Haptics.selection();
+                setState(() => tab = v);
+              },
               destinations: const [
                 NavigationDestination(
-                  icon: Icon(Icons.stars_outlined),
-                  label: 'Puntos',
+                  icon: Icon(CupertinoIcons.house),
+                  selectedIcon: Icon(CupertinoIcons.house_fill),
+                  label: 'Inicio',
                 ),
                 NavigationDestination(
-                  icon: Icon(Icons.local_offer_outlined),
+                  icon: Icon(CupertinoIcons.gift),
+                  selectedIcon: Icon(CupertinoIcons.gift_fill),
                   label: 'Beneficios',
                 ),
                 NavigationDestination(
-                  icon: Icon(Icons.qr_code_2),
+                  icon: Icon(CupertinoIcons.qrcode),
                   label: 'Mi código',
                 ),
                 NavigationDestination(
-                  icon: Icon(Icons.person_outline),
-                  label: 'Cuenta',
+                  icon: Icon(CupertinoIcons.placemark),
+                  selectedIcon: Icon(CupertinoIcons.placemark_fill),
+                  label: 'Sucursales',
+                ),
+                NavigationDestination(
+                  icon: Icon(CupertinoIcons.person),
+                  selectedIcon: Icon(CupertinoIcons.person_fill),
+                  label: 'Perfil',
                 ),
               ],
             )
@@ -522,151 +559,96 @@ class _CustomerRootState extends State<CustomerRoot> {
     );
   }
 
-  Widget _signedBody() => RefreshIndicator(
-    onRefresh: _reload,
-    child: switch (tab) {
-      0 => _loyaltyPage(),
-      1 => _benefitsPage(),
-      2 => _qrPage(),
-      _ => _accountPage(),
-    },
-  );
+  Widget _body(bool signedIn) {
+    if (recoveringPassword) {
+      return RecoveryPasswordScreen(
+        busy: busy,
+        onSubmit: (password) => _run(() async {
+          await Supabase.instance.client.auth.updateUser(
+            UserAttributes(password: password),
+          );
+          if (mounted) setState(() => recoveringPassword = false);
+          await _reload();
+        }),
+      );
+    }
+    if (!signedIn) {
+      return AuthScreen(busy: busy, onAction: _run, onChanged: _reload);
+    }
+    if (!loaded) {
+      if (loadError != null && !loading) {
+        return ErrorState(
+          error: loadError!,
+          onRetry: _reload,
+          extra: TextButton.icon(
+            onPressed: busy ? null : _signOut,
+            icon: const Icon(CupertinoIcons.arrow_right_square, size: 18),
+            label: const Text('Cerrar sesión'),
+          ),
+        );
+      }
+      return const HomeSkeleton();
+    }
+    if (profile == null) {
+      return ProfileScreen(busy: busy, onSubmit: _saveProfile);
+    }
+    return _signedBody();
+  }
 
-  Widget _loyaltyPage() => ListView(
-    padding: const EdgeInsets.all(20),
-    children: [
-      Text(
-        'Hola, ${profile?['fullName'] ?? ''}',
-        style: Theme.of(
+  Widget _signedBody() {
+    final balance = parseNum(loyalty?['pointsBalance']) ?? 0;
+    final page = switch (tab) {
+      0 => HomePage(
+        profile: profile,
+        loyalty: loyalty,
+        rewards: rewards,
+        points: points,
+        branches: branches,
+        quotes: pointPaymentQuotes,
+        busy: busy,
+        animateBalance: !balanceCounted,
+        onBalanceCounted: () => balanceCounted = true,
+        onDecideQuote: (quote, confirm) => _decidePointPayment(quote, confirm),
+        onSeeBranches: () => setState(() => tab = 3),
+        onSeeRewards: () => setState(() => tab = 1),
+        onSeeHistory: _openHistory,
+      ),
+      1 => BenefitsPage(
+        balance: balance,
+        rewards: rewards,
+        promotions: promotions,
+        campaigns: campaigns,
+        services: services,
+        branches: branches,
+        selectedBranchId: selectedPromotionBranchId,
+        promotionsLoading: promotionsLoading,
+        onSelectBranch: _selectPromotionBranch,
+        onOpenPromotion: (item) => Navigator.push(
           context,
-        ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
-      ),
-      const SizedBox(height: 16),
-      _card(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'PUNTOS DISPONIBLES',
-              style: TextStyle(
-                letterSpacing: 1.2,
-                fontWeight: FontWeight.w700,
-                color: _scheme.primary,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '${loyalty?['pointsBalance'] ?? '0'}',
-              style: TextStyle(
-                fontSize: 42,
-                fontWeight: FontWeight.w800,
-                color: _scheme.primary,
-              ),
-            ),
-            Text(
-              loyalty?['canRedeem'] == true
-                  ? 'Valor para canje: ${_usd(loyalty?['availableValueUsd'])} USD'
-                  : 'Canje de puntos no habilitado actualmente',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: _scheme.primary,
-              ),
-            ),
-            if (loyalty?['canRedeem'] == true)
-              Text(
-                'Tasa vigente: 1 punto = ${_usd(loyalty?['redemptionUsdPerPoint'])} USD',
-                style: TextStyle(color: _scheme.onSurfaceVariant),
-              ),
-            const SizedBox(height: 8),
-            Text(
-              loyalty?['message']?.toString() ??
-                  'Consulta el historial de puntos.',
-              style: TextStyle(color: _scheme.onSurfaceVariant),
-            ),
-          ],
+          MaterialPageRoute<void>(
+            builder: (_) => PromotionDetailPage(promotion: item),
+          ),
         ),
       ),
-      if (pointPaymentQuotes.isNotEmpty) ...[
-        const SizedBox(height: 18),
-        const Text(
-          'Solicitudes de pago en caja',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-        ),
-        Text(
-          'Revisa el importe y los puntos antes de autorizar. Cada solicitud vence en poco tiempo.',
-          style: TextStyle(color: _scheme.onSurfaceVariant),
-        ),
-        ...pointPaymentQuotes.map(_pointPaymentQuoteCard),
-      ],
-      const SizedBox(height: 18),
-      const Text(
-        'Actividad reciente',
-        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+      2 => QrPage(qr: qr),
+      3 => BranchesPage(
+        branches: branches,
+        search: branchSearch,
+        onSearchChanged: () => setState(() {}),
       ),
-      if (points.isEmpty)
-        const _Empty(
-          text:
-              'Tu historial aparecerá aquí cuando existan puntos asociados a compras.',
-        ),
-      ...points.map(
-        (row) => ListTile(
-          contentPadding: EdgeInsets.zero,
-          leading: Icon(Icons.bolt, color: _scheme.secondary),
-          title: Text(row['reason']?.toString() ?? _label(row['type'])),
-          trailing: Text('${row['pointsDelta'] ?? ''} pts'),
-        ),
+      _ => AccountPage(
+        profile: profile,
+        email: user?.email,
+        busy: busy,
+        onSignOut: () => _signOut(),
       ),
-    ],
-  );
+    };
+    return RefreshIndicator(onRefresh: _reload, child: page);
+  }
 
-  Widget _pointPaymentQuoteCard(Map<String, dynamic> quote) => _card(
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(Icons.point_of_sale_outlined, color: _scheme.secondary),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                _str(quote['branchName']),
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 17,
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Text(
-          '${quote['points']} puntos · USD ${quote['amountUsd']}',
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-        ),
-        Text('Venta total: USD ${quote['saleTotalUsd'] ?? '—'}'),
-        const SizedBox(height: 4),
-        Text(
-          'Al confirmar, los puntos se descuentan y el importe se aplica a esta venta. Esta acción no se puede deshacer desde la app.',
-          style: TextStyle(fontSize: 12, color: _scheme.onSurfaceVariant),
-        ),
-        const SizedBox(height: 8),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            TextButton(
-              onPressed: busy ? null : () => _decidePointPayment(quote, false),
-              child: const Text('Rechazar'),
-            ),
-            const SizedBox(width: 8),
-            FilledButton(
-              onPressed: busy ? null : () => _decidePointPayment(quote, true),
-              child: const Text('Confirmar pago'),
-            ),
-          ],
-        ),
-      ],
-    ),
+  void _openHistory() => Navigator.push(
+    context,
+    MaterialPageRoute<void>(builder: (_) => HistoryPage(points: points)),
   );
 
   Future<bool> _decidePointPayment(
@@ -674,10 +656,11 @@ class _CustomerRootState extends State<CustomerRoot> {
     bool confirm,
   ) => _run(() async {
     final token = session?.accessToken;
-    if (token == null)
+    if (token == null) {
       throw const CustomerApiError(
         'Inicia sesión para resolver esta solicitud.',
       );
+    }
     final id = Uri.encodeComponent(_str(quote['id']));
     final action = confirm ? 'confirm' : 'decline';
     // The quote is single-use, so its UUID is also a durable decision command ID.
@@ -688,7 +671,7 @@ class _CustomerRootState extends State<CustomerRoot> {
       }, token: token),
     );
     await _reload();
-    if (mounted)
+    if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -700,6 +683,7 @@ class _CustomerRootState extends State<CustomerRoot> {
           ),
         ),
       );
+    }
     if (confirm) {
       Haptics.success();
     } else {
@@ -711,210 +695,26 @@ class _CustomerRootState extends State<CustomerRoot> {
       ? '/customer/promotions'
       : '/customer/promotions?branchId=${Uri.encodeQueryComponent(selectedPromotionBranchId!)}';
 
+  /// Changes the branch filter and refreshes only the promotions list; the
+  /// previous promotions stay visible while the new ones load.
   Future<void> _selectPromotionBranch(String? branchId) async {
     setState(() {
       selectedPromotionBranchId = branchId;
-      busy = true;
-      error = null;
+      promotionsLoading = true;
+      actionError = null;
     });
     try {
       promotions = _maps(await api.get(_promotionFeedPath));
     } on CustomerApiError catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(
-          () => error =
-              '${e.message}${e.correlationId == null ? '' : '\nReferencia: ${e.correlationId}'}',
+          () => actionError = UiError(e.message, reference: e.correlationId),
         );
+      }
     } finally {
-      if (mounted) setState(() => busy = false);
+      if (mounted) setState(() => promotionsLoading = false);
     }
   }
-
-  Widget _benefitsPage() => ListView(
-    padding: const EdgeInsets.all(20),
-    children: [
-      const Text(
-        'Beneficios y novedades',
-        style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-      ),
-      const SizedBox(height: 14),
-      const Text(
-        'Recompensas',
-        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-      ),
-      if (rewards.isEmpty)
-        const _Empty(text: 'No hay recompensas publicadas en este momento.'),
-      ...rewards.map(
-        (item) => _card(
-          child: ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(Icons.card_giftcard, color: _scheme.secondary),
-            title: Text(item['title']?.toString() ?? ''),
-            subtitle: Text(item['description']?.toString() ?? ''),
-            trailing: Text('${item['pointsCost'] ?? '—'} pts'),
-          ),
-        ),
-      ),
-      const SizedBox(height: 14),
-      const Text(
-        'Promociones con beneficio',
-        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-      ),
-      DropdownButtonFormField<String>(
-        initialValue: selectedPromotionBranchId ?? '',
-        decoration: const InputDecoration(
-          labelText: 'Filtrar promociones por sucursal',
-        ),
-        items: [
-          const DropdownMenuItem(
-            value: '',
-            child: Text('Todas las sucursales'),
-          ),
-          ...branches.map(
-            (branch) => DropdownMenuItem(
-              value: _str(branch['id']),
-              child: Text(_str(branch['name'])),
-            ),
-          ),
-        ],
-        onChanged: busy
-            ? null
-            : (value) => _selectPromotionBranch(
-                value == null || value.isEmpty ? null : value,
-              ),
-      ),
-      if (promotions.isEmpty)
-        const _Empty(text: 'No hay promociones vigentes para esta selección.'),
-      ...promotions.map((item) => _promotionCard(item)),
-      const SizedBox(height: 14),
-      const Text(
-        'Novedades',
-        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-      ),
-      if (campaigns.isEmpty) const _Empty(text: 'No hay novedades publicadas.'),
-      ...campaigns.map(
-        (item) => _card(
-          child: ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(Icons.campaign_outlined, color: _scheme.secondary),
-            title: Text(item['title']?.toString() ?? ''),
-            subtitle: Text(item['body']?.toString() ?? ''),
-          ),
-        ),
-      ),
-      const SizedBox(height: 14),
-      const Text(
-        'Servicios',
-        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-      ),
-      if (services.isEmpty)
-        const _Empty(text: 'No hay servicios publicados en este momento.'),
-      ...services.map(
-        (item) => ListTile(
-          contentPadding: EdgeInsets.zero,
-          leading: const Icon(Icons.build_circle_outlined),
-          title: Text(item['description']?.toString() ?? ''),
-          subtitle: Text(_str(item['branchName'])),
-          trailing: Text('USD ${item['priceUsd'] ?? '—'}'),
-        ),
-      ),
-      const SizedBox(height: 12),
-      const Text(
-        'Sucursales',
-        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-      ),
-      TextField(
-        controller: branchSearch,
-        onChanged: (_) => setState(() {}),
-        decoration: const InputDecoration(
-          labelText: 'Buscar sucursal',
-          prefixIcon: Icon(Icons.search),
-        ),
-      ),
-      const SizedBox(height: 8),
-      if (_matchingBranches.isEmpty)
-        _Empty(
-          text: branchSearch.text.trim().isEmpty
-              ? 'No hay sucursales activas.'
-              : 'No hay sucursales que coincidan con la búsqueda.',
-        ),
-      ..._matchingBranches.map(
-        (item) => ListTile(
-          contentPadding: EdgeInsets.zero,
-          leading: const Icon(Icons.place_outlined),
-          title: Text(item['name']?.toString() ?? ''),
-          subtitle: Text('${item['zone'] ?? ''} · ${item['timezone'] ?? ''}'),
-        ),
-      ),
-    ],
-  );
-
-  Widget _promotionCard(Map<String, dynamic> item) => Padding(
-    padding: const EdgeInsets.only(top: 10),
-    child: Card(
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute<void>(
-            builder: (_) => PromotionDetailPage(promotion: item),
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (_str(item['imageUrl']).isNotEmpty)
-              Image.network(
-                _str(item['imageUrl']),
-                height: 150,
-                width: double.infinity,
-                fit: BoxFit.cover,
-                semanticLabel: _str(item['imageAlt']),
-                errorBuilder: (_, __, ___) => const SizedBox(
-                  height: 80,
-                  child: Center(
-                    child: Icon(Icons.image_not_supported_outlined),
-                  ),
-                ),
-              ),
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _str(item['title']),
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 5),
-                  Text(
-                    _promotionHeadline(item),
-                    style: TextStyle(
-                      color: _scheme.secondary,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _str(item['motive']),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const Align(
-                    alignment: Alignment.centerRight,
-                    child: Text('Ver condiciones y detalles ›'),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    ),
-  );
 
   Future<void> _openNotifications() async {
     final token = session?.accessToken;
@@ -934,127 +734,9 @@ class _CustomerRootState extends State<CustomerRoot> {
       );
       await _reload();
     } on CustomerApiError catch (e) {
-      if (mounted) setState(() => error = e.message);
+      if (mounted) setState(() => actionError = UiError(e.message));
     }
   }
-
-  List<Map<String, dynamic>> get _matchingBranches {
-    final query = branchSearch.text.trim().toLowerCase();
-    if (query.isEmpty) return branches;
-    return branches
-        .where(
-          (branch) => '${branch['name'] ?? ''} ${branch['zone'] ?? ''}'
-              .toLowerCase()
-              .contains(query),
-        )
-        .toList(growable: false);
-  }
-
-  Widget _qrPage() => ListView(
-    padding: const EdgeInsets.all(24),
-    children: [
-      _card(
-        child: Column(
-          children: [
-            Icon(Icons.qr_code_2, color: _scheme.primary, size: 38),
-            const SizedBox(height: 12),
-            const Text(
-              'Mi código DLC',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 18),
-            if (qr?['code'] is String)
-              // The QR always sits on white with a quiet zone, in both themes,
-              // so scanners can read it in dark mode too.
-              Container(
-                color: Colors.white,
-                padding: const EdgeInsets.all(12),
-                child: QrImageView(
-                  data: qr!['code'] as String,
-                  size: 220,
-                  backgroundColor: Colors.white,
-                ),
-              )
-            else
-              const CircularProgressIndicator(),
-            const SizedBox(height: 16),
-            Text(
-              qr?['message']?.toString() ?? '',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: _scheme.onSurfaceVariant),
-            ),
-            const SizedBox(height: 10),
-            SelectableText(qr?['code']?.toString() ?? ''),
-          ],
-        ),
-      ),
-    ],
-  );
-
-  Widget _accountPage() => ListView(
-    padding: const EdgeInsets.all(20),
-    children: [
-      _card(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Tu cuenta',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 14),
-            _detail(context, 'Nombre', profile?['fullName']),
-            _detail(context, 'Correo', user?.email),
-            _detail(context, 'Teléfono', profile?['phone'] ?? 'No registrado'),
-            _detail(context, 'Cuenta desde', profile?['createdAt']),
-          ],
-        ),
-      ),
-      const SizedBox(height: 12),
-      _card(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Apariencia',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 12),
-            SegmentedButton<ThemeMode>(
-              segments: const [
-                ButtonSegment(
-                  value: ThemeMode.light,
-                  icon: Icon(Icons.light_mode_outlined),
-                  label: Text('Claro'),
-                ),
-                ButtonSegment(
-                  value: ThemeMode.dark,
-                  icon: Icon(Icons.dark_mode_outlined),
-                  label: Text('Oscuro'),
-                ),
-                ButtonSegment(
-                  value: ThemeMode.system,
-                  icon: Icon(Icons.brightness_auto_outlined),
-                  label: Text('Sistema'),
-                ),
-              ],
-              selected: {widget.themeMode},
-              onSelectionChanged: (selection) {
-                Haptics.selection();
-                widget.onThemeModeChanged(selection.first);
-              },
-            ),
-          ],
-        ),
-      ),
-      const SizedBox(height: 12),
-      OutlinedButton.icon(
-        onPressed: busy ? null : _signOut,
-        icon: const Icon(Icons.logout),
-        label: const Text('Cerrar sesión'),
-      ),
-    ],
-  );
 
   Future<void> _saveProfile(
     String name,
@@ -1063,8 +745,9 @@ class _CustomerRootState extends State<CustomerRoot> {
   ) async {
     await _run(() async {
       final token = session?.accessToken;
-      if (token == null)
+      if (token == null) {
         throw const CustomerApiError('Inicia sesión nuevamente.');
+      }
       await api.post('/customer/me/profile', {
         'fullName': name.trim(),
         if (phone.trim().isNotEmpty) 'phone': phone.trim(),
@@ -1075,6 +758,31 @@ class _CustomerRootState extends State<CustomerRoot> {
       await _reload();
     });
   }
+}
+
+/// Shared frame for the signed-out screens: centred column, brand on top.
+class _AuthFrame extends StatelessWidget {
+  const _AuthFrame({required this.formKey, required this.children});
+  final GlobalKey<FormState> formKey;
+  final List<Widget> children;
+  @override
+  Widget build(BuildContext context) => Form(
+    key: formKey,
+    autovalidateMode: AutovalidateMode.onUserInteraction,
+    child: Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 460),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: children,
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 class AuthScreen extends StatefulWidget {
@@ -1097,7 +805,7 @@ class _AuthScreenState extends State<AuthScreen> {
       password = TextEditingController(),
       name = TextEditingController();
   bool register = false;
-  ColorScheme get _scheme => Theme.of(context).colorScheme;
+  bool showPassword = false;
   @override
   void dispose() {
     email.dispose();
@@ -1123,6 +831,7 @@ class _AuthScreenState extends State<AuthScreen> {
           await showDialog<void>(
             context: context,
             builder: (_) => AlertDialog(
+              icon: const Icon(CupertinoIcons.mail, size: 32),
               title: const Text('Revisa tu correo'),
               content: const Text(
                 'Enviamos un enlace de confirmación. Ábrelo en este dispositivo; luego inicia sesión.',
@@ -1135,7 +844,7 @@ class _AuthScreenState extends State<AuthScreen> {
               ],
             ),
           );
-          setState(() => register = false);
+          if (mounted) setState(() => register = false);
         }
       } else {
         await Supabase.instance.client.auth.signInWithPassword(
@@ -1155,7 +864,7 @@ class _AuthScreenState extends State<AuthScreen> {
       email.text.trim(),
       redirectTo: _authRedirect,
     );
-    if (mounted)
+    if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
@@ -1163,97 +872,107 @@ class _AuthScreenState extends State<AuthScreen> {
           ),
         ),
       );
+    }
   });
 
   @override
-  Widget build(BuildContext context) => Form(
-    key: _formKey,
-    autovalidateMode: AutovalidateMode.onUserInteraction,
-    child: SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const SizedBox(height: 24),
-          Icon(Icons.local_gas_station, color: _scheme.secondary, size: 48),
-          const SizedBox(height: 12),
-          Text(
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return _AuthFrame(
+      formKey: _formKey,
+      children: [
+        const SizedBox(height: 8),
+        const Center(child: BrandWordmark(height: 64)),
+        const SizedBox(height: 20),
+        Semantics(
+          header: true,
+          child: Text(
             register ? 'Crea tu cuenta' : 'Bienvenido',
             textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.w800,
-              color: _scheme.primary,
-            ),
+            style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w700),
           ),
-          const SizedBox(height: 8),
-          const Text(
-            'Accede a tus puntos, novedades y beneficios DLC.',
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 24),
-          if (register)
-            TextFormField(
-              controller: name,
-              textCapitalization: TextCapitalization.words,
-              validator: validateFullName,
-              decoration: const InputDecoration(
-                labelText: 'Nombre completo',
-                border: OutlineInputBorder(),
-              ),
-            ),
-          if (register) const SizedBox(height: 12),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Accede a tus puntos, novedades y beneficios DLC.',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: scheme.onSurfaceVariant),
+        ),
+        const SizedBox(height: 24),
+        if (register) ...[
           TextFormField(
-            controller: email,
-            keyboardType: TextInputType.emailAddress,
-            autofillHints: const [AutofillHints.email],
-            validator: validateEmail,
+            controller: name,
+            textCapitalization: TextCapitalization.words,
+            validator: validateFullName,
             decoration: const InputDecoration(
-              labelText: 'Correo electrónico',
-              border: OutlineInputBorder(),
+              labelText: 'Nombre completo',
+              prefixIcon: Icon(CupertinoIcons.person),
             ),
           ),
           const SizedBox(height: 12),
-          TextFormField(
-            controller: password,
-            obscureText: true,
-            autofillHints: [
-              register ? AutofillHints.newPassword : AutofillHints.password,
-            ],
-            validator: validatePassword,
-            decoration: const InputDecoration(
-              labelText: 'Contraseña',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 16),
-          FilledButton(
-            onPressed: widget.busy ? null : _submit,
-            child: widget.busy
-                ? const CircularProgressIndicator()
-                : Text(register ? 'Crear cuenta' : 'Iniciar sesión'),
-          ),
-          TextButton(
-            onPressed: widget.busy
-                ? null
-                : () => setState(() => register = !register),
-            child: Text(register ? 'Ya tengo cuenta' : 'Crear una cuenta'),
-          ),
-          if (!register)
-            TextButton(
-              onPressed: widget.busy ? null : _resetPassword,
-              child: const Text('Olvidé mi contraseña'),
-            ),
-          const SizedBox(height: 10),
-          Text(
-            'Cuenta de prueba: las condiciones legales deben aprobarse antes de activar producción.',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 12, color: _scheme.onSurfaceVariant),
-          ),
         ],
-      ),
-    ),
-  );
+        TextFormField(
+          controller: email,
+          keyboardType: TextInputType.emailAddress,
+          autofillHints: const [AutofillHints.email],
+          validator: validateEmail,
+          decoration: const InputDecoration(
+            labelText: 'Correo electrónico',
+            prefixIcon: Icon(CupertinoIcons.mail),
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextFormField(
+          controller: password,
+          obscureText: !showPassword,
+          autofillHints: [
+            register ? AutofillHints.newPassword : AutofillHints.password,
+          ],
+          validator: validatePassword,
+          decoration: InputDecoration(
+            labelText: 'Contraseña',
+            prefixIcon: const Icon(CupertinoIcons.lock),
+            suffixIcon: IconButton(
+              tooltip: showPassword
+                  ? 'Ocultar contraseña'
+                  : 'Mostrar contraseña',
+              icon: Icon(
+                showPassword ? CupertinoIcons.eye_slash : CupertinoIcons.eye,
+              ),
+              onPressed: () => setState(() => showPassword = !showPassword),
+            ),
+          ),
+        ),
+        const SizedBox(height: 20),
+        DlcButton(
+          label: register ? 'Crear cuenta' : 'Iniciar sesión',
+          icon: register
+              ? CupertinoIcons.person_add
+              : CupertinoIcons.arrow_right_circle,
+          busy: widget.busy,
+          onPressed: widget.busy ? null : _submit,
+        ),
+        const SizedBox(height: 4),
+        TextButton(
+          onPressed: widget.busy
+              ? null
+              : () => setState(() => register = !register),
+          child: Text(register ? 'Ya tengo cuenta' : 'Crear una cuenta'),
+        ),
+        if (!register)
+          TextButton(
+            onPressed: widget.busy ? null : _resetPassword,
+            child: const Text('Olvidé mi contraseña'),
+          ),
+        const SizedBox(height: 10),
+        Text(
+          'Cuenta de prueba: las condiciones legales deben aprobarse antes de activar producción.',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+        ),
+      ],
+    );
+  }
 }
 
 class RecoveryPasswordScreen extends StatefulWidget {
@@ -1271,6 +990,7 @@ class RecoveryPasswordScreen extends StatefulWidget {
 class _RecoveryPasswordScreenState extends State<RecoveryPasswordScreen> {
   final _formKey = GlobalKey<FormState>();
   final password = TextEditingController();
+  bool showPassword = false;
   @override
   void dispose() {
     password.dispose();
@@ -1286,37 +1006,45 @@ class _RecoveryPasswordScreenState extends State<RecoveryPasswordScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => Form(
-    key: _formKey,
-    autovalidateMode: AutovalidateMode.onUserInteraction,
-    child: SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Text(
-            'Crea una contraseña nueva',
-            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 16),
-          TextFormField(
-            controller: password,
-            obscureText: true,
-            autofillHints: const [AutofillHints.newPassword],
-            validator: validatePassword,
-            decoration: const InputDecoration(
-              labelText: 'Nueva contraseña',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 12),
-          FilledButton(
-            onPressed: widget.busy ? null : _submit,
-            child: const Text('Guardar contraseña'),
-          ),
-        ],
+  Widget build(BuildContext context) => _AuthFrame(
+    formKey: _formKey,
+    children: [
+      const SizedBox(height: 8),
+      const Center(child: BrandWordmark(height: 48)),
+      const SizedBox(height: 20),
+      Semantics(
+        header: true,
+        child: const Text(
+          'Crea una contraseña nueva',
+          style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
+        ),
       ),
-    ),
+      const SizedBox(height: 16),
+      TextFormField(
+        controller: password,
+        obscureText: !showPassword,
+        autofillHints: const [AutofillHints.newPassword],
+        validator: validatePassword,
+        decoration: InputDecoration(
+          labelText: 'Nueva contraseña',
+          prefixIcon: const Icon(CupertinoIcons.lock),
+          suffixIcon: IconButton(
+            tooltip: showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña',
+            icon: Icon(
+              showPassword ? CupertinoIcons.eye_slash : CupertinoIcons.eye,
+            ),
+            onPressed: () => setState(() => showPassword = !showPassword),
+          ),
+        ),
+      ),
+      const SizedBox(height: 16),
+      DlcButton(
+        label: 'Guardar contraseña',
+        icon: CupertinoIcons.check_mark,
+        busy: widget.busy,
+        onPressed: widget.busy ? null : _submit,
+      ),
+    ],
   );
 }
 
@@ -1357,116 +1085,87 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => Form(
-    key: _formKey,
-    autovalidateMode: AutovalidateMode.onUserInteraction,
-    child: SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Text(
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return _AuthFrame(
+      formKey: _formKey,
+      children: [
+        const SizedBox(height: 8),
+        const Center(child: BrandWordmark(height: 48)),
+        const SizedBox(height: 20),
+        Semantics(
+          header: true,
+          child: const Text(
             'Completa tu perfil',
-            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            'Correo verificado: ${Supabase.instance.client.auth.currentUser?.email ?? ''}',
-          ),
-          const SizedBox(height: 16),
-          TextFormField(
-            controller: name,
-            textCapitalization: TextCapitalization.words,
-            validator: validateFullName,
-            decoration: const InputDecoration(
-              labelText: 'Nombre completo',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 12),
-          TextFormField(
-            controller: phone,
-            keyboardType: TextInputType.phone,
-            decoration: const InputDecoration(
-              labelText: 'Teléfono (opcional)',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          CheckboxListTile(
-            value: termsAccepted,
-            onChanged: (v) => setState(() => termsAccepted = v ?? false),
-            contentPadding: EdgeInsets.zero,
-            title: const Text(
-              'Acepto las condiciones vigentes de la cuenta. Las recompensas solo estarán disponibles cuando se publique el programa.',
-            ),
-            controlAffinity: ListTileControlAffinity.leading,
-          ),
-          CheckboxListTile(
-            value: communicationsConsent,
-            onChanged: (v) =>
-                setState(() => communicationsConsent = v ?? false),
-            contentPadding: EdgeInsets.zero,
-            title: const Text(
-              'Quiero recibir novedades y comunicaciones promocionales (opcional).',
-            ),
-            controlAffinity: ListTileControlAffinity.leading,
-          ),
-          FilledButton(
-            onPressed: widget.busy ? null : _submit,
-            child: const Text('Guardar y continuar'),
-          ),
-        ],
-      ),
-    ),
-  );
-}
-
-class _Empty extends StatelessWidget {
-  const _Empty({required this.text});
-  final String text;
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 16),
-    child: Text(
-      text,
-      style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
-    ),
-  );
-}
-
-Widget _card({required Widget child}) => Card(
-  elevation: 0,
-  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-  child: Padding(padding: const EdgeInsets.all(18), child: child),
-);
-Widget _errorBanner(BuildContext context, String text) {
-  final scheme = Theme.of(context).colorScheme;
-  return Material(
-    color: scheme.errorContainer,
-    child: Padding(
-      padding: const EdgeInsets.all(12),
-      child: Text(text, style: TextStyle(color: scheme.onErrorContainer)),
-    ),
-  );
-}
-
-Widget _detail(BuildContext context, String label, dynamic value) => Padding(
-  padding: const EdgeInsets.symmetric(vertical: 6),
-  child: Row(
-    children: [
-      SizedBox(
-        width: 115,
-        child: Text(
-          label,
-          style: TextStyle(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
+            style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
           ),
         ),
-      ),
-      Expanded(child: Text(value?.toString() ?? '—')),
-    ],
-  ),
-);
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Icon(
+              CupertinoIcons.checkmark_seal,
+              size: 18,
+              color: context.dlc.ok.fg,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Correo verificado: ${Supabase.instance.client.auth.currentUser?.email ?? ''}',
+                style: TextStyle(color: scheme.onSurfaceVariant),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        TextFormField(
+          controller: name,
+          textCapitalization: TextCapitalization.words,
+          validator: validateFullName,
+          decoration: const InputDecoration(
+            labelText: 'Nombre completo',
+            prefixIcon: Icon(CupertinoIcons.person),
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextFormField(
+          controller: phone,
+          keyboardType: TextInputType.phone,
+          decoration: const InputDecoration(
+            labelText: 'Teléfono (opcional)',
+            prefixIcon: Icon(CupertinoIcons.phone),
+          ),
+        ),
+        CheckboxListTile(
+          value: termsAccepted,
+          onChanged: (v) => setState(() => termsAccepted = v ?? false),
+          contentPadding: EdgeInsets.zero,
+          title: const Text(
+            'Acepto las condiciones vigentes de la cuenta. Las recompensas solo estarán disponibles cuando se publique el programa.',
+          ),
+          controlAffinity: ListTileControlAffinity.leading,
+        ),
+        CheckboxListTile(
+          value: communicationsConsent,
+          onChanged: (v) => setState(() => communicationsConsent = v ?? false),
+          contentPadding: EdgeInsets.zero,
+          title: const Text(
+            'Quiero recibir novedades y comunicaciones promocionales (opcional).',
+          ),
+          controlAffinity: ListTileControlAffinity.leading,
+        ),
+        const SizedBox(height: 8),
+        DlcButton(
+          label: 'Guardar y continuar',
+          icon: CupertinoIcons.check_mark,
+          busy: widget.busy,
+          onPressed: widget.busy ? null : _submit,
+        ),
+      ],
+    );
+  }
+}
+
 List<Map<String, dynamic>> _maps(dynamic value) => value is List
     ? value
           .whereType<Map>()
@@ -1476,20 +1175,6 @@ List<Map<String, dynamic>> _maps(dynamic value) => value is List
 Map<String, dynamic> _map(dynamic value) =>
     value is Map ? Map<String, dynamic>.from(value) : const {};
 String _str(dynamic value) => value?.toString() ?? '';
-String _label(dynamic value) => (value?.toString() ?? '').replaceAll('_', ' ');
-String _usd(dynamic value) =>
-    (double.tryParse(value?.toString() ?? '') ?? 0).toStringAsFixed(2);
-String _promotionHeadline(Map<String, dynamic> promotion) => switch (_str(
-  promotion['kind'],
-)) {
-  'unit_discount' =>
-    'USD ${_str(promotion['value'])} menos por ${_str(promotion['valueUnit']) == 'us_gallon' ? 'galón' : 'litro'}',
-  'percent_discount' => '${_str(promotion['value'])}% de descuento',
-  'cashback' =>
-    '${_str(promotion['value'])}% cashback · tope USD ${_str(promotion['benefitCapUsd'])}',
-  'points_multiplier' => '${_str(promotion['value'])}× puntos',
-  _ => 'Promoción informativa',
-};
 
 class PromotionDetailPage extends StatelessWidget {
   const PromotionDetailPage({super.key, required this.promotion});
@@ -1497,6 +1182,11 @@ class PromotionDetailPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final colors = context.dlc;
+    final settings = SettingsScope.of(context);
+    final terms = _map(promotion['terms']);
+    final excludes = asStrings(terms['excludes']);
+    final branchName = _str(promotion['branchName']);
     return Scaffold(
       appBar: AppBar(title: const Text('Detalle de promoción')),
       body: ListView(
@@ -1504,16 +1194,19 @@ class PromotionDetailPage extends StatelessWidget {
         children: [
           if (_str(promotion['imageUrl']).isNotEmpty)
             ClipRRect(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(20),
               child: Image.network(
                 _str(promotion['imageUrl']),
                 height: 220,
                 fit: BoxFit.cover,
                 semanticLabel: _str(promotion['imageAlt']),
-                errorBuilder: (_, __, ___) => const SizedBox(
+                errorBuilder: (_, _, _) => SizedBox(
                   height: 120,
                   child: Center(
-                    child: Icon(Icons.image_not_supported_outlined),
+                    child: Icon(
+                      CupertinoIcons.photo,
+                      color: scheme.onSurfaceVariant,
+                    ),
                   ),
                 ),
               ),
@@ -1521,77 +1214,87 @@ class PromotionDetailPage extends StatelessWidget {
           const SizedBox(height: 16),
           Text(
             _str(promotion['title']),
-            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 8),
-          Text(
-            _promotionHeadline(promotion),
-            style: TextStyle(
-              fontSize: 19,
-              color: scheme.secondary,
-              fontWeight: FontWeight.w800,
-            ),
+          Row(
+            children: [
+              Icon(
+                promotionKindIcon(promotion['kind']),
+                size: 20,
+                color: scheme.primary,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  promotionHeadline(
+                    promotion,
+                    unit: settings.volumeUnit,
+                    decimals: settings.decimals,
+                  ),
+                  style: numeric(
+                    TextStyle(
+                      fontSize: 18,
+                      color: scheme.primary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
-          if (_str(promotion['branchName']).isNotEmpty)
-            Text('Sucursal: ${_str(promotion['branchName'])}'),
+          if (branchName.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text('Sucursal: $branchName'),
+          ],
           const SizedBox(height: 10),
           Text(_str(promotion['motive'])),
           const SizedBox(height: 18),
-          _card(
+          DlcCard(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Vigencia',
-                  style: TextStyle(fontWeight: FontWeight.bold),
+                const SectionHeader(
+                  icon: CupertinoIcons.calendar,
+                  title: 'Vigencia',
                 ),
-                const SizedBox(height: 6),
                 Text(
-                  '${_str(promotion['startsAt'])} — ${_str(promotion['endsAt'])}',
+                  '${formatDate(promotion['startsAt'])} — ${formatDate(promotion['endsAt'])}',
                 ),
                 Text('Zona horaria: ${_str(promotion['timeZone'])}'),
                 Text(
-                  'Repetición: ${_recurrenceLabel(_map(promotion['recurrence']))}',
+                  'Repetición: ${recurrenceLabel(_map(promotion['recurrence']))}',
                 ),
               ],
             ),
           ),
           const SizedBox(height: 14),
-          _card(
+          DlcCard(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Aplica cuando',
-                  style: TextStyle(fontWeight: FontWeight.bold),
+                const SectionHeader(
+                  icon: CupertinoIcons.check_mark_circled,
+                  title: 'Aplica cuando',
                 ),
-                ..._strings(_map(promotion['terms'])['applies']).map(
-                  (item) => ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(
-                      Icons.check_circle_outline,
-                      color: scheme.primary,
-                    ),
-                    title: Text(item),
+                for (final item in asStrings(terms['applies']))
+                  _TermRow(
+                    icon: CupertinoIcons.check_mark_circled,
+                    color: colors.ok.fg,
+                    text: item,
                   ),
-                ),
-                if (_strings(
-                  _map(promotion['terms'])['excludes'],
-                ).isNotEmpty) ...[
+                if (excludes.isNotEmpty) ...[
                   const Divider(),
-                  const Text(
-                    'No aplica en',
-                    style: TextStyle(fontWeight: FontWeight.bold),
+                  const SectionHeader(
+                    icon: CupertinoIcons.nosign,
+                    title: 'No aplica en',
                   ),
-                  ..._strings(_map(promotion['terms'])['excludes']).map(
-                    (item) => ListTile(
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.block_outlined),
-                      title: Text(item),
+                  for (final item in excludes)
+                    _TermRow(
+                      icon: CupertinoIcons.xmark_circle,
+                      color: colors.crit.fg,
+                      text: item,
                     ),
-                  ),
                 ],
               ],
             ),
@@ -1608,6 +1311,25 @@ class PromotionDetailPage extends StatelessWidget {
       ),
     );
   }
+}
+
+class _TermRow extends StatelessWidget {
+  const _TermRow({required this.icon, required this.color, required this.text});
+  final IconData icon;
+  final Color color;
+  final String text;
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 5),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 20, color: color),
+        const SizedBox(width: 10),
+        Expanded(child: Text(text)),
+      ],
+    ),
+  );
 }
 
 class CustomerNotificationsPage extends StatefulWidget {
@@ -1627,9 +1349,9 @@ class CustomerNotificationsPage extends StatefulWidget {
 
 class _CustomerNotificationsPageState extends State<CustomerNotificationsPage> {
   late List<Map<String, dynamic>> items = widget.items;
-  String? error;
+  UiError? error;
   final Set<String> busy = {};
-  ColorScheme get _scheme => Theme.of(context).colorScheme;
+
   Future<void> _read(Map<String, dynamic> item) async {
     final id = _str(item['id']);
     if (id.isEmpty || item['readAt'] != null || busy.contains(id)) return;
@@ -1641,71 +1363,133 @@ class _CustomerNotificationsPageState extends State<CustomerNotificationsPage> {
       await widget.api.post('/customer/me/notifications/read', {
         'notificationId': id,
       }, token: widget.token);
-      if (mounted)
+      if (mounted) {
         setState(() {
           item['readAt'] = DateTime.now().toUtc().toIso8601String();
         });
+      }
     } on CustomerApiError catch (e) {
-      if (mounted) setState(() => error = e.message);
+      if (mounted) setState(() => error = UiError(e.message));
     } finally {
       if (mounted) setState(() => busy.remove(id));
     }
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Avisos')),
-    body: ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        if (error != null) _errorBanner(context, error!),
-        if (items.isEmpty)
-          const _Empty(text: 'No tienes avisos por el momento.'),
-        ...items.map(
-          (item) => Card(
-            child: ListTile(
-              onTap: () => _read(item),
-              leading: Icon(
-                item['readAt'] == null
-                    ? Icons.notifications_active_outlined
-                    : Icons.notifications_none,
-                color: item['readAt'] == null
-                    ? _scheme.secondary
-                    : _scheme.onSurfaceVariant,
-              ),
-              title: Text(
-                _str(item['title']),
-                style: TextStyle(
-                  fontWeight: item['readAt'] == null
-                      ? FontWeight.bold
-                      : FontWeight.normal,
-                ),
-              ),
-              subtitle: Text(
-                '${_str(item['body'])}\n${_str(item['createdAt'])}',
-              ),
-              isThreeLine: true,
-              trailing: busy.contains(_str(item['id']))
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : null,
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Avisos')),
+      body: Column(
+        children: [
+          if (error != null)
+            ErrorBanner(
+              error: error!,
+              onDismiss: () => setState(() => error = null),
             ),
+          Expanded(
+            child: items.isEmpty
+                ? const Center(
+                    child: EmptyState(
+                      icon: CupertinoIcons.bell_slash,
+                      message:
+                          'No tienes avisos por el momento. Aquí verás novedades de tus puntos y promociones.',
+                    ),
+                  )
+                : ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      for (final item in items)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: _NotificationTile(
+                            item: item,
+                            busy: busy.contains(_str(item['id'])),
+                            onTap: () => _read(item),
+                            scheme: scheme,
+                          ),
+                        ),
+                    ],
+                  ),
           ),
-        ),
-      ],
-    ),
-  );
+        ],
+      ),
+    );
+  }
 }
 
-String _recurrenceLabel(Map<String, dynamic> recurrence) =>
-    switch (_str(recurrence['kind'])) {
-      'weekly' => 'Semanal · ${_strings(recurrence['weekdays']).join(', ')}',
-      'monthly' => 'Mensual · día ${_str(recurrence['dayOfMonth'])}',
-      _ => 'Una vez',
-    };
-List<String> _strings(dynamic value) => value is List
-    ? value.map((item) => item.toString()).toList(growable: false)
-    : const [];
+class _NotificationTile extends StatelessWidget {
+  const _NotificationTile({
+    required this.item,
+    required this.busy,
+    required this.onTap,
+    required this.scheme,
+  });
+  final Map<String, dynamic> item;
+  final bool busy;
+  final VoidCallback onTap;
+  final ColorScheme scheme;
+
+  @override
+  Widget build(BuildContext context) {
+    final unread = item['readAt'] == null;
+    final colors = context.dlc;
+    return DlcCard(
+      weight: CardWeight.compact,
+      onTap: onTap,
+      semanticLabel: unread ? 'Aviso sin leer' : 'Aviso leído',
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          IconBadge(
+            icon: notificationIcon(item['type']),
+            tone: unread ? colors.accents[0] : colors.info,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _str(item['title']),
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: unread ? FontWeight.w700 : FontWeight.w500,
+                  ),
+                ),
+                if (_str(item['body']).isNotEmpty) Text(_str(item['body'])),
+                const SizedBox(height: 4),
+                Text(
+                  formatDateTime(item['createdAt']),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+                if (unread) ...[
+                  const SizedBox(height: 6),
+                  const StatusChip(
+                    look: StatusLook(
+                      'Nuevo',
+                      CupertinoIcons.circle_fill,
+                      ToneKind.brand,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          if (busy)
+            const Padding(
+              padding: EdgeInsets.only(left: 8),
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}

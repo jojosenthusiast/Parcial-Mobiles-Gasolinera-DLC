@@ -1,3 +1,4 @@
+import { icon as svgIcon } from './icons.js';
 // Pure helpers for the DLC panel (no DOM access at import time, so node tests can load this file).
 
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -144,8 +145,8 @@ export function branchNotReadyMessage(status) {
 const statusPill = status => {
   const key = String(status ?? '').toLowerCase();
   const tone = key === 'draft' || key === 'configured' ? 'warn' : key === 'suspended' || key === 'archived' ? 'critical' : 'unknown';
-  const icon = tone === 'warn' ? '▲' : tone === 'critical' ? '✖' : '?';
-  return `<span class="pill ${tone}"><span class="pill-icon" aria-hidden="true">${icon}</span>${escapeHtml(branchStatusLabel(status))}</span>`;
+  const iconName = tone === 'warn' ? 'alert-circle' : tone === 'critical' ? 'alert-triangle' : 'info';
+  return `<span class="pill ${tone}">${svgIcon(iconName, { size: 14, cls: 'pill-icon' })}${escapeHtml(branchStatusLabel(status))}</span>`;
 };
 
 // In-context state shown instead of the raw error card when the selected branch is not operating yet.
@@ -185,10 +186,10 @@ const FUEL_ORDER = ['super', 'regular', 'diesel'];
 // critical <= 30 %, medium <= 60 %, optimal > 60 %. Each state carries a text label and an icon so colour is never the only signal.
 export function tankLevel(percentage) {
   const value = percentage === null || percentage === undefined || percentage === '' ? NaN : Number(percentage);
-  if (!Number.isFinite(value)) return { key: 'unknown', label: 'Sin medición', icon: '?', tone: 'unknown' };
-  if (value <= TANK_THRESHOLDS.critical) return { key: 'critical', label: 'Crítico', icon: '✖', tone: 'critical' };
-  if (value <= TANK_THRESHOLDS.medium) return { key: 'medium', label: 'Medio', icon: '▲', tone: 'warn' };
-  return { key: 'optimal', label: 'Óptimo', icon: '✓', tone: '' };
+  if (!Number.isFinite(value)) return { key: 'unknown', label: 'Sin medición', icon: 'info', tone: 'unknown' };
+  if (value <= TANK_THRESHOLDS.critical) return { key: 'critical', label: 'Crítico', icon: 'alert-triangle', tone: 'critical' };
+  if (value <= TANK_THRESHOLDS.medium) return { key: 'medium', label: 'Medio', icon: 'alert-circle', tone: 'warn' };
+  return { key: 'optimal', label: 'Óptimo', icon: 'circle-check', tone: '' };
 }
 
 export function aggregateTanksByFuel(branches) {
@@ -224,14 +225,14 @@ const numberFormat = (value, digits = 0) => new Intl.NumberFormat('es-SV', { max
 
 export function tankLevelsMarkup(rows) {
   if (!rows.length) return '<div class="empty">No hay tanques configurados en el alcance seleccionado.</div>';
-  const legend = `<ul class="chart-legend" aria-label="Umbrales de nivel"><li><span aria-hidden="true">✖</span> Crítico: 30 % o menos</li><li><span aria-hidden="true">▲</span> Medio: hasta 60 %</li><li><span aria-hidden="true">✓</span> Óptimo: más de 60 %</li></ul>`;
+  const legend = `<ul class="chart-legend" aria-label="Umbrales de nivel"><li>${svgIcon('alert-triangle', { size: 14 })} Crítico: 30 % o menos</li><li>${svgIcon('alert-circle', { size: 14 })} Medio: hasta 60 %</li><li>${svgIcon('circle-check', { size: 14 })} Óptimo: más de 60 %</li></ul>`;
   const items = rows.map(row => {
     const level = tankLevel(row.percentage);
     const pct = row.percentage === null ? null : Math.max(0, Math.min(100, row.percentage));
     const pctText = pct === null ? 'sin medición' : `${numberFormat(pct, 1)} %`;
     const description = `${row.name}: nivel ${level.label.toLowerCase()}, ${pctText}${row.capacity > 0 ? `, ${numberFormat(row.onHand)} de ${numberFormat(row.capacity)} litros` : ''}`;
     const family = FUEL_ORDER.includes(row.family) ? row.family : 'other';
-    return `<li class="tank-level"><div class="tank-level-head"><b><span class="fuel-dot fuel-dot--${family}" aria-hidden="true"></span>${escapeHtml(row.name)}</b><span class="pill ${level.tone}"><span class="pill-icon" aria-hidden="true">${level.icon}</span>${escapeHtml(level.label)} · ${escapeHtml(pctText)}</span></div>`
+    return `<li class="tank-level"><div class="tank-level-head"><b><span class="fuel-dot fuel-dot--${family}" aria-hidden="true"></span>${escapeHtml(row.name)}</b><span class="pill ${level.tone}">${svgIcon(level.icon, { size: 14, cls: 'pill-icon' })}${escapeHtml(level.label)} · ${escapeHtml(pctText)}</span></div>`
       + `<svg class="tank-level-svg" role="img" aria-label="${escapeHtml(description)}" width="100%" height="16"><rect class="tank-track" width="100%" height="16" rx="4"/>${pct === null ? '' : `<rect class="tank-fill tank-fill--${level.key}" width="${pct.toFixed(2)}%" height="16" rx="4"/>`}<line class="tank-threshold" x1="30%" x2="30%" y1="0" y2="16"/><line class="tank-threshold" x1="60%" x2="60%" y1="0" y2="16"/></svg>`
       + `<div class="tank-level-meta">${row.capacity > 0 ? `${numberFormat(row.onHand)} L de ${numberFormat(row.capacity)} L` : 'Sin litros medidos'} · ${row.branchCount} sucursal(es)${row.minimumPercent === null ? '' : ` · tanque más bajo ${numberFormat(row.minimumPercent, 1)} %`}${row.measuredTanks < row.totalTanks ? ` · ${row.totalTanks - row.measuredTanks} tanque(s) sin medición` : ''}</div></li>`;
   }).join('');

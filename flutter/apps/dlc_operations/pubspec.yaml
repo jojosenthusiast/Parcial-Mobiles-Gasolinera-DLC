@@ -1,4 +1,4 @@
-name: dlc_operations
+﻿name: dlc_operations
 description: DLC Operaciones para gerencia y personal de sucursales.
 publish_to: none
 version: 0.1.0+1
@@ -7,6 +7,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  cupertino_icons: ^1.0.8
   dlc_api:
     path: ../../packages/dlc_api
   image_picker: 1.2.3
@@ -19,3 +20,6 @@ flutter:
   uses-material-design: true
   assets:
   - assets/branding/dlc_logo.png
+  - assets/branding/dlc_drop.png
+  - assets/branding/dlc_wordmark.png
+

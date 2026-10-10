@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 
 const spec = JSON.parse(await readFile(new URL('../../../contracts/openapi.json', import.meta.url), 'utf8'));
 const migration = await readFile(new URL('../../migrations/0092_customer_points_sale_tender.sql', import.meta.url), 'utf8');
@@ -8,7 +8,9 @@ const reversalMigration = await readFile(new URL('../../migrations/0093_customer
 const sqlSmoke = await readFile(new URL('../sql/customer-points-payment-smoke.sql', import.meta.url), 'utf8');
 const paymentService = await readFile(new URL('../../src/customers/customer-points-payment.service.ts', import.meta.url), 'utf8');
 const controller = await readFile(new URL('../../src/customers/customers.controller.ts', import.meta.url), 'utf8');
-const customerApp = await readFile(new URL('../../../flutter/apps/dlc_customers/lib/main.dart', import.meta.url), 'utf8');
+const customerLib = new URL('../../../flutter/apps/dlc_customers/lib/', import.meta.url);
+// The Clientes UI is split across lib/main.dart and lib/ui/*.dart; the contract covers all of it.
+const customerApp = (await Promise.all([new URL('main.dart', customerLib), ...(await readdir(new URL('ui/', customerLib))).filter(name => name.endsWith('.dart')).map(name => new URL('ui/' + name, customerLib))].map(file => readFile(file, 'utf8')))).join('\n');
 const operationsApp = await readFile(new URL('../../../flutter/apps/dlc_operations/lib/cash_screen.dart', import.meta.url), 'utf8');
 
 test('puntos en ventas exige aprobación autenticada del cliente y publica rutas explícitas', () => {
@@ -37,12 +39,12 @@ test('el saldo del Cliente publica la tasa activa y su equivalente monetario cal
   const response = spec.paths['/customer/me/loyalty'].get.responses['200'];
   assert.equal(response.content['application/json'].schema.$ref, '#/components/schemas/CustomerLoyaltyBalance');
   assert.deepEqual(spec.components.schemas.CustomerLoyaltyBalance.required, ['pointsBalance', 'earnedProgram', 'canRedeem', 'redemptionUsdPerPoint', 'availableValueUsd', 'message']);
-  assert.match(customerApp, /Valor para canje/);
+  assert.match(customerApp, /availableValueUsd/);
   assert.match(customerApp, /canRedeem/);
 });
 
 test('las apps tienen pasos de solicitud, confirmación explícita y actualización del saldo', () => {
-  assert.match(customerApp, /Solicitudes de pago en caja/);
+  assert.match(customerApp, /Pago con puntos en/);
   assert.match(customerApp, /Confirmar pago/);
   assert.match(customerApp, /commandId.*quote\['id'\]/);
   assert.match(operationsApp, /Solicitar pago con puntos/);

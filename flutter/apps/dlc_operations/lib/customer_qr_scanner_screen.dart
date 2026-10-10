@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 String? customerQrCodeFromBarcodes(Iterable<Barcode> barcodes) {
@@ -66,7 +67,7 @@ class _CustomerQrScannerScreenState extends State<CustomerQrScannerScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.no_photography_outlined, size: 48),
+                    const Icon(CupertinoIcons.camera, size: 48),
                     const SizedBox(height: 12),
                     const Text(
                       'No se pudo iniciar la cámara. Revisa el permiso y vuelve al campo para introducir el código manualmente.',
@@ -75,7 +76,7 @@ class _CustomerQrScannerScreenState extends State<CustomerQrScannerScreen> {
                     const SizedBox(height: 12),
                     OutlinedButton.icon(
                       onPressed: () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.keyboard_alt_outlined),
+                      icon: const Icon(CupertinoIcons.pencil),
                       label: const Text('Usar código manual'),
                     ),
                   ],
@@ -90,7 +91,7 @@ class _CustomerQrScannerScreenState extends State<CustomerQrScannerScreen> {
             padding: const EdgeInsets.all(12),
             child: OutlinedButton.icon(
               onPressed: () => Navigator.of(context).pop(),
-              icon: const Icon(Icons.close),
+              icon: const Icon(CupertinoIcons.xmark),
               label: const Text('Cancelar'),
             ),
           ),

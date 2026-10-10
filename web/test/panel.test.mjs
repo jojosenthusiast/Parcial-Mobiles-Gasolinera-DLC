@@ -85,12 +85,18 @@ for (const [themeName, palette] of [['claro', light], ['oscuro', dark]]) {
   });
 }
 
-test('tema: el interruptor Claro/Oscuro/Sistema está en la cabecera, persiste con try/catch y no usa scripts en línea', () => {
+test('tema: el selector vive en Configuración (menú del avatar), no en la cabecera ni en el login', async () => {
   assert.match(html, /<script src="\/theme\.js"><\/script>/);
   assert.doesNotMatch(html, /<script(?![^>]*\bsrc=)[^>]*>/, 'la CSP bloquea scripts en línea');
-  assert.equal([...html.matchAll(/data-theme-choice="(light|dark|system)"/g)].length, 6, 'el interruptor aparece en la cabecera y en el login');
-  assert.match(html, /<header class="topbar">[\s\S]*data-theme-choice="dark"[\s\S]*<\/header>/);
+  assert.equal([...html.matchAll(/data-theme-choice=/g)].length, 0, 'sin interruptor de tema en cabecera ni login');
+  assert.match(html, /id="user-menu-button"/);
+  const shell = await read('shell.js');
+  assert.match(shell, /name: 'theme'/);
+  assert.match(shell, /Configuración/);
+  assert.match(shell, /Cerrar sesión/);
   assert.match(html, /name="color-scheme" content="light dark"/);
+  assert.match(html, /rel="apple-touch-icon"/);
+  assert.match(html, /rel="icon"[^>]*favicon-32\.png/);
   assert.match(themeScript, /try\s*\{[\s\S]*localStorage\.getItem/);
   assert.match(themeScript, /try\s*\{[\s\S]*localStorage\.(setItem|removeItem)/);
 });
@@ -150,15 +156,14 @@ test('países: cambiar el país reinicia una sucursal incompatible y la consulta
   assert.equal(lib.networkQuery({ days: 7 }), 'days=7');
 });
 
-test('países: el panel combina país y sucursal, y envía countryCode al registrar sucursales', () => {
-  assert.match(app, /id="country-select"/);
-  assert.match(app, /metrics\/network\/dashboard\?\$\{networkQuery\(\{days:state\.days,branchId:state\.branchId,countryCode\}\)\}/);
-  assert.match(app, /\$\('#country-select'\)\.onchange=/);
-  assert.match(app, /countryCode:normalizeCountryCode\(f\.get\('countryCode'\)\),profile:/);
-  assert.match(app, /name="countryCode" required>\$\{countryChoiceMarkup\('SV'/);
-  assert.match(app, /step:'identity',data:\{[^}]*countryCode:normalizeCountryCode/);
+test('países: el ScopeBar combina país y sucursal, y el alta envía countryCode', async () => {
+  const scope = await read('scopebar.js'); const wizard = await read('wizard-model.js'); const model = await read('dashboard-model.js');
+  assert.match(scope, /label: 'País'/);
+  assert.match(scope, /label: 'Sucursal', multi: true/);
+  assert.match(model, /networkQuery\(\{ days, branchId: id/);
+  assert.match(wizard, /countryCode: String\(v\.countryCode\)/);
+  assert.match(wizard, /profile: 'operational'/);
   assert.match(app, /searchParams\.set\('country',state\.countryCode\)/);
-  assert.match(app, /label:'País'/);
 });
 
 /* ---------------- Charts ---------------- */
@@ -186,7 +191,7 @@ test('gráficos: agregación por combustible y marcado accesible sin estilos en 
   assert.match(markup, /role="img" aria-label="Súper: nivel medio, 50 %/);
   assert.match(markup, /tank-fill--medium/);
   assert.match(markup, /tank-fill--optimal/);
-  assert.match(markup, /aria-hidden="true">✓/);
+  assert.match(markup, /<svg class="icon pill-icon"/);
   assert.doesNotMatch(markup, /style=/);
   assert.match(lib.tankLevelsMarkup([]), /No hay tanques/);
 });
@@ -203,11 +208,12 @@ test('gráficos: la tendencia de ventas es un SVG con alternativa textual, sin e
   assert.match(css, /@media\(prefers-reduced-motion:reduce\)/);
 });
 
-test('gráficos: el dashboard consolidado incluye niveles por combustible y no usa atributos style bloqueados por la CSP', () => {
-  assert.match(app, /Nivel de tanques por combustible/);
-  assert.match(app, /tankLevelsMarkup\(tankRows\)/);
-  assert.match(app, /salesTrendSvg\(daily,/);
-  assert.doesNotMatch(app, /style="/);
+test('gráficos: el resumen consolidado incluye niveles por combustible y no usa atributos style bloqueados por la CSP', async () => {
+  const page = await read('dashboard-page.js');
+  assert.match(page, /Nivel de tanques por combustible/);
+  assert.match(page, /salesTrendSvg\(daily,/);
+  assert.match(page, /Tendencia de ventas/);
+  for (const source of [app, page, await read('charts.js'), await read('components.js'), await read('branch-wizard.js')]) assert.doesNotMatch(source, /style="/);
   assert.doesNotMatch(app, /#[0-9a-fA-F]{6}\b/, 'app.js no debe contener colores fijos');
 });
 
@@ -269,7 +275,7 @@ test('validación: los formularios usan aria-invalid, aria-describedby y envío 
 });
 
 /* ---------------- cut windows come from the API ---------------- */
-test('cuts show their window from startsAt/endsAt and never hardcode 14:00-22:00', () => {
+test('cuts show their window from startsAt/endsAt and never hardcode 14:00-22:00', async () => {
   const helpers = /const cutName=[\s\S]*?cutLabel=c=>[^;\r\n]*;/.exec(app)?.[0];
   assert.ok(helpers, 'falta el ayudante cutName/cutWindow/cutLabel');
   assert.doesNotMatch(helpers, /1[4-9]:00|2[0-2]:00|06:00/);
@@ -280,6 +286,7 @@ test('cuts show their window from startsAt/endsAt and never hardcode 14:00-22:00
   assert.equal(evening, 'Vespertino');
   assert.match(window, /^\d{2}:\d{2}–\d{2}:\d{2}$/);
   assert.match(label, /^Vespertino<div class="branch-meta">\d{2}:\d{2}–\d{2}:\d{2}<\/div>$/);
-  assert.equal((app.match(/label:'Turno',render:cutLabel/g) ?? []).length, 2, 'dashboard and cuts table share the label');
+  assert.equal((app.match(/label:'Turno',render:cutLabel/g) ?? []).length, 1, 'cuts table uses the shared label');
+  assert.match(await read('dashboard-page.js'), /label: 'Turno', render: helpers\.cutLabel/);
   assert.match(app, /Detalle del corte · \$\{esc\(cutName\(cut\)\)\} \$\{esc\(cutWindow\(cut\)\)\}/);
 });

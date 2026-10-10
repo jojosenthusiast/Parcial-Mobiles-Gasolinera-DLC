@@ -36,6 +36,7 @@ function harness({ csrfIssuedAt = Date.now(), postResponses }) {
   const sandbox = {
     state: { csrf: 'old-token', csrfIssuedAt },
     crypto: { randomUUID: () => 'req-id' },
+    notifyMutation() {},
     showLogin() { throw new Error('no debe cerrar sesión'); },
     fetch: async (url, init = {}) => {
       calls.push({ url, init });

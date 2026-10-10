@@ -14,9 +14,12 @@ if (!key || Buffer.byteLength(key) < 32) throw new Error('WEB_SESSION_KEY debe c
 if (production && apiBase.protocol !== 'https:') throw new Error('WEB_API_BASE_URL debe usar HTTPS en producción.');
 if (!production && !['https:', 'http:'].includes(apiBase.protocol)) throw new Error('WEB_API_BASE_URL inválida.');
 const encryptionKey = Buffer.from(key).subarray(0, 32);
-const mime = { '.html':'text/html; charset=utf-8', '.js':'text/javascript; charset=utf-8', '.css':'text/css; charset=utf-8', '.svg':'image/svg+xml' };
+const mime = { '.html':'text/html; charset=utf-8', '.js':'text/javascript; charset=utf-8', '.css':'text/css; charset=utf-8', '.svg':'image/svg+xml', '.png':'image/png', '.ico':'image/x-icon', '.webp':'image/webp' };
+const binaryTypes = new Set(['.png', '.ico', '.webp']);
 const cookieSecure = production ? '; Secure' : '';
 const refreshFlights = new Map();
+const securityHeaders = {'X-Content-Type-Options':'nosniff','X-Frame-Options':'DENY','Referrer-Policy':'no-referrer',...(production?{'Strict-Transport-Security':'max-age=31536000; includeSubDomains'}:{})};
+const publicAuthRoutes = new Map([['/auth/activate','auth/activate'],['/auth/password-reset/complete','auth/password-reset/complete']]);
 
 function cookies(req) {
   return Object.fromEntries((req.headers.cookie || '').split(';').map(v => v.trim()).filter(Boolean)
@@ -36,7 +39,7 @@ function open(value) {
 function send(res,status,body,headers={}) {
   const data=typeof body==='string'?body:JSON.stringify(body);
   res.writeHead(status,{'Content-Type':typeof body==='string'?'text/plain; charset=utf-8':'application/json; charset=utf-8',
-    'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'same-origin',...headers});res.end(data);
+    'Cache-Control':'no-store',...securityHeaders,...headers});res.end(data);
 }
 function setSession(res,tokens) {
   const expiry=Date.parse(tokens.accessExpiresAt||'')||Date.now()+5*60_000;
@@ -94,6 +97,12 @@ const server=createServer(async(req,res)=>{
    const tokens=result.data.data||result.data;setSession(res,tokens);
    return send(res,200,{authenticated:true});
   }
+  if(publicAuthRoutes.has(url.pathname)&&req.method==='POST'){
+   if(!csrfValid(req))return send(res,403,{message:'Token CSRF inválido.'});
+   const input=await body(req);if(typeof input.token!=='string'||typeof input.password!=='string'||input.token.length<32||input.token.length>200)return send(res,400,{message:'Token y contraseña son obligatorios.'});
+   const result=await upstream(publicAuthRoutes.get(url.pathname),'POST',null,{token:input.token,password:input.password});
+   return send(res,result.response.status,result.data);
+  }
   if(url.pathname==='/logout'&&req.method==='POST'){
    if(!csrfValid(req))return send(res,403,{message:'Token CSRF inválido.'});
    const session=await sessionFor(req,res);if(session?.accessToken)await upstream('auth/logout','POST',session.accessToken).catch(()=>undefined);
@@ -110,13 +119,15 @@ const server=createServer(async(req,res)=>{
    const result=await upstream(relativePath,req.method,session.accessToken,input);
    if(!result.response.ok)return send(res,result.response.status,result.data);
    if(!result.type.includes('json')){
-    res.writeHead(result.response.status,{'Content-Type':result.type,'Content-Disposition':result.response.headers.get('content-disposition')||'attachment','Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'});return res.end(result.data);
+    res.writeHead(result.response.status,{'Content-Type':result.type,'Content-Disposition':result.response.headers.get('content-disposition')||'attachment','Cache-Control':'private, no-store',...securityHeaders});return res.end(result.data);
    }
    return send(res,result.response.status,result.data);
   }
   if(req.method==='GET'){
    const name=url.pathname==='/'?'index.html':url.pathname.slice(1);const file=pathSafe(name);
-   const data=await readFile(file);return send(res,200,data.toString(),{'Content-Type':mime[extname(file)]||'application/octet-stream',
+   const data=await readFile(file);
+   if(binaryTypes.has(extname(file))){res.writeHead(200,{'Content-Type':mime[extname(file)],'Cache-Control':'public, max-age=3600',...securityHeaders});return res.end(data);}
+   return send(res,200,data.toString(),{'Content-Type':mime[extname(file)]||'application/octet-stream',
     'Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"});
   }
   return send(res,404,{message:'Ruta no encontrada.'});

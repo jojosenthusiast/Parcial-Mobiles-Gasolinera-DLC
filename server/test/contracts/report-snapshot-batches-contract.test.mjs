@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises';
 const service = await readFile(new URL('../../src/reports/reports.service.ts', import.meta.url), 'utf8');
 const migration = await readFile(new URL('../../migrations/0080_report_snapshot_batches.sql', import.meta.url), 'utf8');
 const indexMigration = await readFile(new URL('../../migrations/0081_report_snapshot_indexes.sql', import.meta.url), 'utf8');
+const finalizationMigration = await readFile(new URL('../../migrations/0111_report_run_finalize_operational_assets.sql', import.meta.url), 'utf8');
 
 test('reportes toman snapshot consistente en lotes y conservan paginación normalizada', () => {
   assert.match(service, /SET TRANSACTION ISOLATION LEVEL REPEATABLE READ/);
@@ -29,4 +30,10 @@ test('la migración conserva snapshots antiguos y protege la nueva tabla por org
   assert.match(indexMigration, /report_runs_branch_fk_idx ON report_runs\(branch_id,organization_id\)/);
   assert.match(indexMigration, /report_runs_creator_fk_idx ON report_runs\(created_by,organization_id\)/);
   assert.match(indexMigration, /DROP INDEX IF EXISTS report_run_rows_org_idx/);
+});
+
+test('report-run finalization grants only the immutable-transition columns to the API runtime', () => {
+  assert.match(finalizationMigration, /GRANT\s+UPDATE\s*\(\s*snapshot_complete\s*,\s*row_count\s*,\s*source_watermark\s*\)\s+ON\s+TABLE\s+report_runs\s+TO\s+dlc_api_runtime/i);
+  assert.doesNotMatch(finalizationMigration, /GRANT\s+UPDATE\s+ON\s+TABLE\s+report_runs\s+TO\s+dlc_api_runtime/i);
+  assert.match(finalizationMigration, /CREATE\s+POLICY\s+dlc_api_finalize\s+ON\s+report_runs\s+FOR\s+UPDATE\s+TO\s+dlc_api_runtime\s+USING\s*\(\s*snapshot_complete\s*=\s*false\s*\)\s+WITH\s+CHECK\s*\(\s*snapshot_complete\s*=\s*true\s*\)/i);
 });

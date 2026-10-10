@@ -1,4 +1,4 @@
-# Panel web DLC
+﻿# Panel web DLC
 
 Cliente web liviano para el mismo API y la misma base Supabase que usa la app iOS. Requiere Node 24.15 o posterior; el panel no instala paquetes externos.
 
@@ -53,3 +53,8 @@ npm test
 ```
 
 La prueba de contrato comprueba que el cliente use el prefijo versionado `/api/v1` y el sobre de errores compartido. El entorno de desarrollo restringido donde se creó este panel no permite abrir sockets locales (`listen EPERM`), así que la prueba de extremo a extremo con API y navegador debe ejecutarse en Windows o CI.
+
+## Sistema de diseño del panel (DESIGN.md)
+- Tokens claro/oscuro en public/styles.css; logos en public/assets/ (el BFF sirve PNG binarios).
+- Módulos ES sin dependencias: icons.js (sprite SVG), labels.js (estados en español), ormat.js y prefs.js (moneda por país, litros/galones, decimales), components.js (combobox, segmentado, esqueletos), module-view.js (caché 60 s, secuenciador, render parcial), scopebar.js, shell.js (menú de avatar y Configuración), drawer.js (panel lateral con borradores), ranch-wizard.js + wizard-model.js (alta por pasos), dashboard-*.js, equipment-network.js, charts.js, decorate.js.
+- Los módulos aún heredados (Cortes, Compras, Personal, Cuentas, Tienda, Caja, Gastos, Reportes, Mantenimiento, Activos, Incidencias) usan pp.js con tokens, iconos, etiquetas y fechas compartidos.

@@ -3,28 +3,24 @@ import 'dart:convert';
 import 'dart:developer' as developer;
 import 'package:dlc_api/dlc_api.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:share_plus/share_plus.dart';
-import 'infrastructure_setup_screen.dart';
-import 'staff_shifts_screen.dart';
-import 'branch_onboarding_screen.dart';
 import 'branch_status.dart';
-import 'maintenance_screen.dart';
-import 'operational_assets_screen.dart';
-import 'procurement_screen.dart';
-import 'cash_screen.dart';
-import 'promotions_screen.dart';
-import 'loyalty_programs_screen.dart';
 import 'dispense_screen.dart';
 import 'app_theme.dart';
 import 'theme_mode_controller.dart';
 import 'country_catalog.dart';
 import 'cut_window.dart';
 import 'haptics.dart';
-import 'network_dashboard_page.dart';
-import 'charts.dart';
 import 'live_form.dart';
 import 'validators.dart';
-import 'tank_levels.dart';
+import 'preferences.dart';
+import 'scope.dart';
+import 'labels.dart';
+import 'ui/kit.dart' show BrandDrop, BrandWordmark;
+import 'ui/branches_page.dart' show openBranchWizard;
+import 'ui/login_page.dart';
+import 'ui/shell.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -59,18 +55,32 @@ void main() {
             writer: (value) => session.writePreference('themeMode', value),
           ),
         ),
+        prefs: DisplayPrefsController(store: SessionKeyValueStore(session)),
+        scope: ScopeController(store: SessionKeyValueStore(session)),
       ),
     ),
   );
 }
 
 class OperationsController extends ChangeNotifier {
-  OperationsController(this.api, {ThemeModeController? themeController})
-    : themeController = themeController ?? ThemeModeController() {
+  OperationsController(
+    this.api, {
+    ThemeModeController? themeController,
+    DisplayPrefsController? prefs,
+    ScopeController? scope,
+  }) : themeController = themeController ?? ThemeModeController(),
+       prefs = prefs ?? DisplayPrefsController(),
+       scope = scope ?? ScopeController() {
     api.onSessionExpired = _handleSessionExpired;
   }
   final EmployeeSession api;
   final ThemeModeController themeController;
+
+  /// Volume unit and decimals (Perfil > Configuración).
+  final DisplayPrefsController prefs;
+
+  /// Persistent Red > País > Sucursal scope shown on every screen.
+  final ScopeController scope;
   EmployeeIdentity? identity;
   List<BranchSummary> branches = const [];
   BranchSummary? branch;
@@ -108,6 +118,7 @@ class OperationsController extends ChangeNotifier {
       if (identity != null) {
         await _loadBranches();
         await _selectAssignedBranch();
+        await _restoreScope();
       }
     } on DlcApiException catch (e) {
       _setError(e);
@@ -126,6 +137,7 @@ class OperationsController extends ChangeNotifier {
       identity = await api.login(email, password);
       await _loadBranches();
       await _selectAssignedBranch();
+      await _restoreScope();
     } on DlcApiException catch (e) {
       _setError(e);
       identity = null;
@@ -161,6 +173,19 @@ class OperationsController extends ChangeNotifier {
     }
     if (branch != null && !branches.any((b) => b.id == branch!.id))
       branch = null;
+    // Forget branches/countries that disappeared from the user's list.
+    scope.syncSilently(scope.state.sanitize(branches));
+  }
+
+  /// Restores the per-user scope; branch managers get their branch locked.
+  Future<void> _restoreScope() async {
+    final id = identity?.id;
+    if (id == null) return;
+    await scope.restore(
+      id,
+      branches,
+      locked: !globalPermissions.contains('branch.read'),
+    );
   }
 
   Future<void> _selectAssignedBranch() async {
@@ -190,12 +215,16 @@ class OperationsController extends ChangeNotifier {
       notifyListeners();
       return;
     }
+    // Same branch (refresh): keep what is on screen while the new data loads.
+    final sameBranch = branch?.id == selected.id;
     branch = selected;
     branchUnavailable = false;
     error = null;
     errorDetails = null;
-    dashboard = const {};
-    pumps = const [];
+    if (!sameBranch || !selected.isActive) {
+      dashboard = const {};
+      pumps = const [];
+    }
     if (!selected.isActive) {
       // Draft / configured / suspended: never call branch-scoped endpoints.
       permissions = globalPermissions;
@@ -301,6 +330,7 @@ class OperationsController extends ChangeNotifier {
 
   void _handleSessionExpired() {
     identity = null;
+    scope.clear();
     branches = const [];
     branch = null;
     pumps = const [];
@@ -324,6 +354,7 @@ class OperationsController extends ChangeNotifier {
       await api.clear();
     } finally {
       identity = null;
+      scope.clear();
       branches = const [];
       branch = null;
       pumps = const [];
@@ -351,12 +382,15 @@ class _OperationsAppState extends State<OperationsApp> {
   void initState() {
     super.initState();
     widget.controller.themeController.load();
+    widget.controller.prefs.load();
     widget.controller.start();
   }
 
   @override
   void dispose() {
     widget.controller.themeController.dispose();
+    widget.controller.prefs.dispose();
+    widget.controller.scope.dispose();
     widget.controller.dispose();
     super.dispose();
   }
@@ -373,6 +407,10 @@ class _OperationsAppState extends State<OperationsApp> {
       theme: lightTheme,
       darkTheme: darkTheme,
       themeMode: widget.controller.themeController.mode,
+      builder: (context, child) => DisplayPrefsScope(
+        controller: widget.controller.prefs,
+        child: child ?? const SizedBox.shrink(),
+      ),
       home: RootPage(controller: widget.controller),
     ),
   );
@@ -386,11 +424,7 @@ class RootPage extends StatelessWidget {
     if (controller.busy && controller.identity == null)
       return const LoadingPage();
     if (controller.identity == null) return LoginPage(controller: controller);
-    if (controller.branch == null)
-      return BranchPickerPage(controller: controller);
-    if (controller.branchNotReady)
-      return BranchNotReadyPage(controller: controller);
-    return HomePage(controller: controller);
+    return AppShell(controller: controller);
   }
 }
 
@@ -398,923 +432,7 @@ Future<void> openBranchOnboarding(
   BuildContext context,
   OperationsController controller, {
   String? branchId,
-}) => Navigator.push(
-  context,
-  MaterialPageRoute<void>(
-    builder: (_) => BranchOnboardingScreen(
-      api: controller.api,
-      initialBranchId: branchId,
-      onActivated: () => controller.refresh(),
-    ),
-  ),
-);
-
-/// Shown instead of the dashboard when the selected branch is a draft /
-/// not active (or the server refused it as out of scope).
-class BranchNotReadyPage extends StatelessWidget {
-  const BranchNotReadyPage({required this.controller, super.key});
-  final OperationsController controller;
-  @override
-  Widget build(BuildContext context) {
-    final branch = controller.branch!;
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Sucursal'),
-        actions: [
-          IconButton(
-            onPressed: controller.refresh,
-            tooltip: 'Actualizar',
-            icon: const Icon(Icons.refresh),
-          ),
-          IconButton(
-            onPressed: controller.clearBranch,
-            tooltip: 'Ver sucursales',
-            icon: const Icon(Icons.store_outlined),
-          ),
-          IconButton(
-            onPressed: controller.logout,
-            tooltip: 'Cerrar sesión',
-            icon: const Icon(Icons.logout),
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: RefreshIndicator(
-          onRefresh: controller.refresh,
-          child: ListView(
-            padding: const EdgeInsets.all(18),
-            children: [
-              BrandHeader(
-                title: branch.name,
-                subtitle: '${branch.code} · ${branch.zone}',
-              ),
-              const SizedBox(height: 14),
-              if (controller.error != null)
-                ErrorBox(controller.error!, details: controller.errorDetails),
-              BranchNotReadyPanel(
-                branch: branch,
-                canManage: controller.canManageBranches,
-                onOpenOnboarding: () => openBranchOnboarding(
-                  context,
-                  controller,
-                  branchId: branch.id,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class LoginPage extends StatefulWidget {
-  const LoginPage({required this.controller, super.key});
-  final OperationsController controller;
-  @override
-  State<LoginPage> createState() => _LoginPageState();
-}
-
-class _LoginPageState extends State<LoginPage> {
-  final form = GlobalKey<FormState>();
-  final email = TextEditingController(), password = TextEditingController();
-  bool showPassword = false;
-  @override
-  void dispose() {
-    email.dispose();
-    password.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    body: SafeArea(
-      child: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(22),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 480),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Image.asset(
-                    'assets/branding/dlc_logo.png',
-                    width: 190,
-                    height: 110,
-                    fit: BoxFit.contain,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Text(
-                  'OPERACIÓN DLC',
-                  style: TextStyle(
-                    color: context.dlc.brand,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 1.2,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Iniciar sesión',
-                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    color: context.dlc.ink,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Ingresa con la cuenta asignada por tu organización. Tu perfil determina las sucursales y acciones disponibles.',
-                  style: TextStyle(color: context.dlc.muted, height: 1.45),
-                ),
-                const SizedBox(height: 20),
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(18),
-                    child: Form(
-                      key: form,
-                      autovalidateMode: AutovalidateMode.onUserInteraction,
-                      child: Column(
-                        children: [
-                          TextFormField(
-                            controller: email,
-                            keyboardType: TextInputType.emailAddress,
-                            textInputAction: TextInputAction.next,
-                            autocorrect: false,
-                            enableSuggestions: false,
-                            decoration: const InputDecoration(
-                              labelText: 'Correo electrónico',
-                              prefixIcon: Icon(Icons.alternate_email),
-                            ),
-                            validator: emailAddress,
-                          ),
-                          const SizedBox(height: 13),
-                          TextFormField(
-                            controller: password,
-                            obscureText: !showPassword,
-                            textInputAction: TextInputAction.go,
-                            onFieldSubmitted: (_) => submit(),
-                            decoration: InputDecoration(
-                              labelText: 'Contraseña',
-                              prefixIcon: const Icon(Icons.lock_outline),
-                              suffixIcon: IconButton(
-                                tooltip: showPassword
-                                    ? 'Ocultar contraseña'
-                                    : 'Mostrar contraseña',
-                                onPressed: () => setState(
-                                  () => showPassword = !showPassword,
-                                ),
-                                icon: Icon(
-                                  showPassword
-                                      ? Icons.visibility_off_outlined
-                                      : Icons.visibility_outlined,
-                                ),
-                              ),
-                            ),
-                            validator: (v) => v == null || v.isEmpty
-                                ? 'Escribe tu contraseña.'
-                                : null,
-                          ),
-                          if (widget.controller.error != null) ...[
-                            const SizedBox(height: 13),
-                            ErrorBox(widget.controller.error!),
-                          ],
-                          const SizedBox(height: 16),
-                          SizedBox(
-                            width: double.infinity,
-                            child: FilledButton.icon(
-                              onPressed: widget.controller.busy ? null : submit,
-                              icon: widget.controller.busy
-                                  ? SizedBox(
-                                      width: 18,
-                                      height: 18,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: Theme.of(
-                                          context,
-                                        ).colorScheme.onPrimary,
-                                      ),
-                                    )
-                                  : const Icon(Icons.login),
-                              label: Text(
-                                widget.controller.busy
-                                    ? 'Verificando acceso…'
-                                    : 'Entrar',
-                              ),
-                              style: FilledButton.styleFrom(
-                                backgroundColor: context.dlc.brand,
-                                minimumSize: const Size.fromHeight(52),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Center(
-                  child: Text(
-                    'Acceso protegido · DLC',
-                    style: TextStyle(color: context.dlc.muted, fontSize: 12),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    ),
-  );
-  Future<void> submit() async {
-    if (form.currentState?.validate() ?? false) {
-      await widget.controller.signIn(email.text, password.text);
-      if (widget.controller.error != null) Haptics.error();
-    } else {
-      Haptics.error();
-    }
-  }
-}
-
-class BranchPickerPage extends StatefulWidget {
-  const BranchPickerPage({
-    required this.controller,
-    this.onSelected,
-    super.key,
-  });
-  final OperationsController controller;
-  final ValueChanged<BranchSummary>? onSelected;
-  @override
-  State<BranchPickerPage> createState() => _BranchPickerPageState();
-}
-
-class _BranchPickerPageState extends State<BranchPickerPage> {
-  String? country;
-
-  OperationsController get controller => widget.controller;
-
-  Future<void> openNetwork(BuildContext context) => Navigator.push(
-    context,
-    MaterialPageRoute<void>(
-      builder: (_) => NetworkDashboardPage(
-        api: controller.api,
-        branches: controller.branches,
-        onOpenOnboarding: controller.canManageBranches
-            ? () => openBranchOnboarding(context, controller)
-            : null,
-        onOpenBranch: (b) async {
-          Navigator.pop(context);
-          await controller.selectBranch(b);
-          if (context.mounted && widget.onSelected != null) {
-            widget.onSelected!(b);
-          }
-        },
-      ),
-    ),
-  );
-
-  @override
-  Widget build(BuildContext context) {
-    final countries = countryOptions(controller.branches);
-    final visible = filterBranchesByCountry(controller.branches, country);
-    final canSeeNetwork =
-        controller.globalPermissions.contains('branch.read') &&
-        controller.branches.length > 1;
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Sucursales'),
-        actions: [
-          if (canSeeNetwork)
-            IconButton(
-              onPressed: () => openNetwork(context),
-              tooltip: 'Tablero consolidado',
-              icon: const Icon(Icons.public),
-            ),
-          if (controller.globalPermissions.contains('branch.manage'))
-            IconButton(
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute<void>(
-                  builder: (_) => BranchOnboardingScreen(
-                    api: controller.api,
-                    onActivated: () => controller.refresh(),
-                  ),
-                ),
-              ),
-              tooltip: 'Alta de sucursal',
-              icon: const Icon(Icons.add_business_outlined),
-            ),
-          ListenableBuilder(
-            listenable: controller.themeController,
-            builder: (context, _) => IconButton(
-              onPressed: () => controller.themeController.select(
-                nextThemeMode(controller.themeController.mode),
-              ),
-              tooltip:
-                  'Apariencia: ${themeModeLabel(controller.themeController.mode)}',
-              icon: Icon(themeModeIcon(controller.themeController.mode)),
-            ),
-          ),
-          IconButton(
-            onPressed: controller.logout,
-            tooltip: 'Cerrar sesión',
-            icon: const Icon(Icons.logout),
-          ),
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: controller.refresh,
-        child: ListView(
-          padding: const EdgeInsets.all(18),
-          children: [
-            BrandHeader(
-              title: controller.identity!.isGeneralManager
-                  ? 'Vista de la red'
-                  : 'Tus sucursales',
-              subtitle:
-                  '${controller.identity!.displayName} · ${controller.identity!.roles.map((r) => r.name).toSet().join(', ')}',
-            ),
-            const SizedBox(height: 15),
-            if (controller.error != null)
-              ErrorBox(controller.error!, details: controller.errorDetails),
-            if (controller.branches.isNotEmpty &&
-                controller.activeBranchList.isEmpty) ...[
-              NoActiveBranchesPanel(
-                canManage: controller.canManageBranches,
-                onOpenOnboarding: () =>
-                    openBranchOnboarding(context, controller),
-              ),
-              const SizedBox(height: 10),
-            ],
-            if (canSeeNetwork) ...[
-              Card(
-                child: ListTile(
-                  leading: Icon(Icons.public, color: context.dlc.brand),
-                  title: const Text('Tablero consolidado'),
-                  subtitle: const Text(
-                    'Ventas, cortes y niveles por país o sucursal.',
-                  ),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => openNetwork(context),
-                ),
-              ),
-              const SizedBox(height: 10),
-            ],
-            if (controller.globalPermissions.contains('branch.manage')) ...[
-              Card(
-                child: ListTile(
-                  leading: Icon(
-                    Icons.add_business_outlined,
-                    color: context.dlc.brand,
-                  ),
-                  title: const Text('Configurar una sucursal'),
-                  subtitle: const Text(
-                    'Crear o continuar un borrador de alta.',
-                  ),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute<void>(
-                      builder: (_) => BranchOnboardingScreen(
-                        api: controller.api,
-                        onActivated: () => controller.refresh(),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 10),
-            ],
-            if (countries.length > 1) ...[
-              CountryDropdown(
-                value: country,
-                includeAll: true,
-                codes: [for (final c in countries) c.countryCode],
-                counts: {
-                  for (final c in countries) c.countryCode: c.branchCount,
-                },
-                onChanged: (v) {
-                  Haptics.selection();
-                  setState(() => country = v);
-                },
-              ),
-              const SizedBox(height: 10),
-            ],
-            if (controller.branches.isEmpty && controller.error == null)
-              const EmptyPanel(
-                icon: Icons.store_mall_directory_outlined,
-                title: 'Sin sucursales visibles',
-                message:
-                    'La cuenta no tiene asignación activa o no hay sucursales disponibles.',
-              ),
-            ...visible.map(
-              (b) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: BranchCard(
-                  branch: b,
-                  onTap: () async {
-                    await controller.selectBranch(b);
-                    if (context.mounted && widget.onSelected != null) {
-                      widget.onSelected!(b);
-                    }
-                  },
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class HomePage extends StatefulWidget {
-  const HomePage({required this.controller, super.key});
-  final OperationsController controller;
-  @override
-  State<HomePage> createState() => _HomePageState();
-}
-
-class _HomePageState extends State<HomePage> {
-  int tab = 0;
-  @override
-  Widget build(BuildContext context) {
-    final c = widget.controller;
-    final pages = [
-      DashboardPage(controller: c),
-      PumpsPage(controller: c),
-      ReportsPage(controller: c),
-      CutsPage(controller: c),
-      AccountPage(controller: c),
-    ];
-    final labels = ['Inicio', 'Bombas', 'Reportes', 'Cortes', 'Cuenta'];
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          labels[tab],
-          style: const TextStyle(fontWeight: FontWeight.w800),
-        ),
-        actions: [
-          IconButton(
-            onPressed: c.refresh,
-            tooltip: 'Actualizar',
-            icon: const Icon(Icons.refresh),
-          ),
-          if (c.can('operational_asset.read'))
-            IconButton(
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute<void>(
-                  builder: (_) => OperationalAssetsScreen(
-                    api: c.api,
-                    branchId: c.branch!.id,
-                    permissions: c.permissions,
-                    branches: c.branches,
-                  ),
-                ),
-              ),
-              tooltip: 'Activos operativos',
-              icon: const Icon(Icons.handyman_outlined),
-            ),
-          if (c.can('incident.read'))
-            IconButton(
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute<void>(
-                  builder: (_) => IncidentsPage(controller: c),
-                ),
-              ),
-              tooltip: 'Incidencias',
-              icon: const Icon(Icons.warning_amber_outlined),
-            ),
-          if (c.branches.length > 1)
-            IconButton(
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute<void>(
-                  builder: (_) => BranchPickerPage(
-                    controller: c,
-                    onSelected: (_) => Navigator.pop(context),
-                  ),
-                ),
-              ),
-              tooltip: 'Cambiar sucursal',
-              icon: const Icon(Icons.store_outlined),
-            ),
-        ],
-      ),
-      body: SafeArea(
-        child: AnimatedSwitcher(
-          duration: MediaQuery.of(context).disableAnimations
-              ? Duration.zero
-              : const Duration(milliseconds: 220),
-          child: KeyedSubtree(key: ValueKey(tab), child: pages[tab]),
-        ),
-      ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: tab,
-        onDestinationSelected: (i) => setState(() => tab = i),
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.space_dashboard_outlined),
-            selectedIcon: Icon(Icons.space_dashboard),
-            label: 'Inicio',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.local_gas_station_outlined),
-            selectedIcon: Icon(Icons.local_gas_station),
-            label: 'Bombas',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.query_stats_outlined),
-            selectedIcon: Icon(Icons.query_stats),
-            label: 'Reportes',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.receipt_long_outlined),
-            selectedIcon: Icon(Icons.receipt_long),
-            label: 'Cortes',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.account_circle_outlined),
-            selectedIcon: Icon(Icons.account_circle),
-            label: 'Cuenta',
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class DashboardPage extends StatelessWidget {
-  const DashboardPage({required this.controller, super.key});
-  final OperationsController controller;
-  @override
-  Widget build(BuildContext context) {
-    final data = controller.dashboard, inv = mapOf(data['inventory']);
-    final tanks = listOf(inv['tanks']), cuts = listOf(data['cuts']);
-    final alerts = listOf(data['alerts']),
-        incidents = listOf(data['openIncidents']);
-    return RefreshIndicator(
-      onRefresh: controller.refresh,
-      child: ListView(
-        key: const PageStorageKey('dashboard'),
-        padding: const EdgeInsets.fromLTRB(18, 4, 18, 24),
-        children: [
-          BrandHeader(
-            title: controller.branch!.name,
-            subtitle:
-                '${controller.identity!.isGeneralManager ? 'Gerente General' : 'Gerente de Sucursal'} · ${controller.branch!.zone}',
-          ),
-          const SizedBox(height: 14),
-          if (controller.error != null)
-            ErrorBox(controller.error!, details: controller.errorDetails),
-          if (controller.loadingBranch && data.isEmpty)
-            const LinearProgressIndicator(minHeight: 3),
-          if (data.isEmpty && !controller.loadingBranch)
-            const EmptyPanel(
-              icon: Icons.cloud_off_outlined,
-              title: 'No se cargó el tablero',
-              message:
-                  'Actualiza para consultar los datos vigentes de esta sucursal.',
-            ),
-          if (data.isNotEmpty) ...[
-            Row(
-              children: [
-                Expanded(
-                  child: MetricCard(
-                    label: 'Tanques',
-                    value: '${tanks.length}',
-                    detail: 'configurados',
-                    icon: Icons.opacity_outlined,
-                    color: context.dlc.brand,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: MetricCard(
-                    label: 'Incidencias',
-                    value: '${incidents.length}',
-                    detail: 'abiertas',
-                    icon: Icons.report_problem_outlined,
-                    color: incidents.isEmpty
-                        ? context.dlc.optimal
-                        : context.dlc.critical,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 15),
-            SectionTitle(title: 'Cortes de hoy', trailing: '${cuts.length}/2'),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(14),
-                child: Column(
-                  children: cuts.isEmpty
-                      ? [const Text('No hay cortes para la fecha operativa.')]
-                      : cuts.map((raw) {
-                          final cut = mapOf(raw);
-                          final slot = cut['slot']?.toString();
-                          final closed = cut['status'] == 'closed';
-                          return ListTile(
-                            contentPadding: EdgeInsets.zero,
-                            leading: Icon(
-                              closed ? Icons.check_circle : Icons.timelapse,
-                              color: closed
-                                  ? context.dlc.optimal
-                                  : context.dlc.brand,
-                            ),
-                            title: Text(
-                              [
-                                cutName(slot),
-                                cutWindowLabel(cut),
-                              ].where((part) => part.isNotEmpty).join(' · '),
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            subtitle: Text(
-                              '${cut['registeredDispensers'] ?? 0} de ${cut['expectedDispensers'] ?? '—'} bombas · ${cut['status'] ?? 'sin estado'}',
-                            ),
-                          );
-                        }).toList(),
-                ),
-              ),
-            ),
-            if (cuts.any((c) => num(mapOf(c)['closedSalesUsd']) != null)) ...[
-              const SizedBox(height: 10),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: TrendBarChart(
-                    title: 'Ventas por corte de hoy (USD)',
-                    points: [
-                      for (final raw in cuts)
-                        if (num(mapOf(raw)['closedSalesUsd']) != null)
-                          TrendPoint(
-                            cutName(mapOf(raw)['slot']),
-                            num(mapOf(raw)['closedSalesUsd'])!,
-                          ),
-                    ],
-                    format: formatUsd,
-                    color: context.dlc.brand,
-                  ),
-                ),
-              ),
-            ],
-            const SizedBox(height: 14),
-            SectionTitle(
-              title: 'Inventario de combustible',
-              trailing: inv['totalLiters'] == null
-                  ? 'Dato incompleto'
-                  : '${fmt(inv['totalLiters'])} L',
-            ),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(14),
-                child: TankLevelBars(
-                  levels: fuelLevelsFromTanks(tanks.map(mapOf)),
-                ),
-              ),
-            ),
-            ...tanks.map((raw) {
-              final t = mapOf(raw);
-              final pct = tankPercent(t);
-              final status = pct == null ? null : tankStatusForPercent(pct);
-              final color = status == null
-                  ? context.dlc.muted
-                  : context.dlc.foreground(status);
-              final fuel =
-                  '${t['fuelName'] ?? 'Combustible'} · ${t['code'] ?? ''}';
-              return Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Card(
-                  child: Semantics(
-                    container: true,
-                    label:
-                        '$fuel: ${pct == null ? 'sin medición' : '${pct.toStringAsFixed(1)} %, ${tankStatusText(status!).toLowerCase()}'}',
-                    child: ExcludeSemantics(
-                      child: Padding(
-                        padding: const EdgeInsets.all(14),
-                        child: Column(
-                          children: [
-                            Row(
-                              children: [
-                                Icon(
-                                  status?.icon ?? Icons.help_outline,
-                                  size: 18,
-                                  color: color,
-                                ),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: Text(
-                                    fuel,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
-                                ),
-                                Text(
-                                  pct == null
-                                      ? 'Sin medición'
-                                      : '${pct.toStringAsFixed(1)}% · ${status!.label}',
-                                  style: TextStyle(
-                                    color: color,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 6),
-                            Align(
-                              alignment: Alignment.centerLeft,
-                              child: Text(
-                                '${t['onHandLiters'] == null ? 'Sin saldo' : fmt(t['onHandLiters']) + ' L'} · capacidad ${fmt(t['capacityLiters'])} L',
-                                style: TextStyle(
-                                  color: context.dlc.muted,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            }),
-            if (alerts.isNotEmpty) ...[
-              const SizedBox(height: 14),
-              SectionTitle(
-                title: 'Alertas que requieren acción',
-                trailing: '${alerts.length}',
-              ),
-              ...alerts.take(4).map((raw) {
-                final a = mapOf(raw);
-                return Padding(
-                  padding: const EdgeInsets.only(top: 7),
-                  child: AlertCard(
-                    title: '${a['title'] ?? 'Alerta'}',
-                    detail: '${a['detail'] ?? ''}',
-                    critical:
-                        a['severity'] == 'critical' || a['severity'] == 'high',
-                  ),
-                );
-              }),
-            ],
-            const SizedBox(height: 14),
-            SectionTitle(
-              title: 'Bombas',
-              trailing: '${controller.pumps.length} registradas',
-            ),
-            PumpList(controller: controller, compact: true),
-            const SizedBox(height: 8),
-            Text(
-              'Última actualización: ${dateLabel(data['lastSourceAt'])} · Día operativo ${data['operationalDate'] ?? '—'}',
-              style: TextStyle(color: context.dlc.muted, fontSize: 11),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class PumpsPage extends StatelessWidget {
-  const PumpsPage({required this.controller, super.key});
-  final OperationsController controller;
-  @override
-  Widget build(BuildContext context) => RefreshIndicator(
-    onRefresh: controller.refresh,
-    child: ListView(
-      padding: const EdgeInsets.fromLTRB(18, 5, 18, 24),
-      children: [
-        Text(
-          'Equipo de pista',
-          style: TextStyle(
-            fontSize: 23,
-            fontWeight: FontWeight.w800,
-            color: context.dlc.ink,
-          ),
-        ),
-        Text(
-          'Abre una bomba para ver sus datos y registrar una incidencia.',
-          style: TextStyle(color: context.dlc.muted),
-        ),
-        const SizedBox(height: 14),
-        if (controller.error != null) ErrorBox(controller.error!),
-        if (controller.pumps.isEmpty && !controller.loadingBranch)
-          const EmptyPanel(
-            icon: Icons.local_gas_station_outlined,
-            title: 'Sin bombas visibles',
-            message: 'No hay dispensadores en esta sucursal.',
-          ),
-        PumpList(controller: controller),
-      ],
-    ),
-  );
-}
-
-class PumpList extends StatelessWidget {
-  const PumpList({required this.controller, this.compact = false, super.key});
-  final OperationsController controller;
-  final bool compact;
-  @override
-  Widget build(BuildContext context) => Column(
-    children: controller.pumps.map((pump) {
-      final id = textOf(pump, ['id']),
-          code = textOf(pump, ['code', 'name'], fallback: 'Dispensador');
-      final status = textOf(pump, [
-        'physicalStatus',
-        'status',
-      ], fallback: 'unknown');
-      final ready = status == 'active' || status == 'operational';
-      final nozzles = listOf(pump['nozzles']);
-      final fuels = nozzles
-          .map((v) => textOf(mapOf(v), ['fuelName', 'productName']))
-          .where((v) => v.isNotEmpty)
-          .toSet()
-          .join(' · ');
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Card(
-          child: InkWell(
-            borderRadius: BorderRadius.circular(20),
-            onTap: id.isEmpty
-                ? null
-                : () => Navigator.push(
-                    context,
-                    MaterialPageRoute<void>(
-                      builder: (_) => PumpDetailPage(
-                        controller: controller,
-                        pumpId: id,
-                        snapshot: pump,
-                      ),
-                    ),
-                  ),
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Row(
-                children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: ready
-                          ? context.dlc.optimalContainer
-                          : context.dlc.brandContainer,
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Icon(
-                      Icons.local_gas_station,
-                      color: ready ? context.dlc.optimal : context.dlc.critical,
-                    ),
-                  ),
-                  const SizedBox(width: 11),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          code,
-                          style: const TextStyle(fontWeight: FontWeight.w800),
-                        ),
-                        if (fuels.isNotEmpty)
-                          Text(
-                            fuels,
-                            style: TextStyle(
-                              color: context.dlc.muted,
-                              fontSize: 12,
-                            ),
-                          ),
-                        Text(
-                          stateLabel(status),
-                          style: TextStyle(
-                            color: ready
-                                ? context.dlc.optimal
-                                : context.dlc.critical,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Icon(
-                    compact ? Icons.chevron_right : Icons.arrow_forward_ios,
-                    size: 16,
-                    color: context.dlc.muted,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      );
-    }).toList(),
-  );
-}
+}) => openBranchWizard(context, controller, branchId: branchId);
 
 class PumpDetailPage extends StatefulWidget {
   const PumpDetailPage({
@@ -1404,7 +522,7 @@ class _PumpDetailPageState extends State<PumpDetailPage> {
           ),
           if (nozzles.isEmpty)
             const EmptyPanel(
-              icon: Icons.info_outline,
+              icon: CupertinoIcons.info_circle,
               title: 'Sin mangueras registradas',
               message: 'Revisa la configuración de esta bomba.',
             ),
@@ -1415,7 +533,7 @@ class _PumpDetailPageState extends State<PumpDetailPage> {
               child: Card(
                 child: ListTile(
                   leading: Icon(
-                    Icons.water_drop_outlined,
+                    CupertinoIcons.drop,
                     color: context.dlc.brand,
                   ),
                   title: Text(
@@ -1447,7 +565,7 @@ class _PumpDetailPageState extends State<PumpDetailPage> {
                               ? null
                               : () => baselineDialog(n),
                           icon: Icon(
-                            Icons.add_circle_outline,
+                            CupertinoIcons.plus_circle,
                             color: context.dlc.brand,
                           ),
                         )
@@ -1462,7 +580,7 @@ class _PumpDetailPageState extends State<PumpDetailPage> {
           if (widget.controller.can('incident.create'))
             FilledButton.icon(
               onPressed: () => incidentDialog(context),
-              icon: const Icon(Icons.add_alert_outlined),
+              icon: const Icon(CupertinoIcons.bell),
               label: const Text('Registrar incidencia'),
               style: FilledButton.styleFrom(
                 backgroundColor: context.dlc.brand,
@@ -1476,7 +594,7 @@ class _PumpDetailPageState extends State<PumpDetailPage> {
           const SizedBox(height: 8),
           OutlinedButton.icon(
             onPressed: load,
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(CupertinoIcons.refresh),
             label: const Text('Actualizar detalle'),
           ),
         ],
@@ -1687,7 +805,7 @@ class _IncidentsPageState extends State<IncidentsPage> {
       actions: [
         IconButton(
           onPressed: loading ? null : load,
-          icon: const Icon(Icons.refresh),
+          icon: const Icon(CupertinoIcons.refresh),
         ),
       ],
     ),
@@ -1706,10 +824,10 @@ class _IncidentsPageState extends State<IncidentsPage> {
             onSubmitted: (_) => load(),
             decoration: InputDecoration(
               labelText: 'Buscar código o descripción',
-              prefixIcon: const Icon(Icons.search),
+              prefixIcon: const Icon(CupertinoIcons.search),
               suffixIcon: IconButton(
                 onPressed: load,
-                icon: const Icon(Icons.arrow_forward),
+                icon: const Icon(CupertinoIcons.arrow_right),
               ),
             ),
           ),
@@ -1742,7 +860,7 @@ class _IncidentsPageState extends State<IncidentsPage> {
           SectionTitle(title: 'Resultados', trailing: '${rows.length}'),
           if (!loading && rows.isEmpty)
             const EmptyPanel(
-              icon: Icons.verified_outlined,
+              icon: CupertinoIcons.checkmark_seal,
               title: 'No se encontraron incidencias',
               message:
                   'Prueba otro filtro o registra una incidencia desde el detalle del equipo.',
@@ -1763,8 +881,8 @@ class _IncidentsPageState extends State<IncidentsPage> {
                   ).then((_) => load()),
                   leading: Icon(
                     row['severity'] == 'critical' || row['severity'] == 'high'
-                        ? Icons.error_outline
-                        : Icons.report_outlined,
+                        ? CupertinoIcons.exclamationmark_circle
+                        : CupertinoIcons.exclamationmark_octagon,
                     color:
                         row['severity'] == 'critical' ||
                             row['severity'] == 'high'
@@ -1779,7 +897,7 @@ class _IncidentsPageState extends State<IncidentsPage> {
                     '${textOf(row, ['status'], fallback: 'reported')} · ${dateLabel(row['occurredAt'])}\n${textOf(row, ['description'], fallback: 'Sin descripción')}',
                   ),
                   isThreeLine: true,
-                  trailing: const Icon(Icons.chevron_right),
+                  trailing: const Icon(CupertinoIcons.chevron_right),
                 ),
               ),
             ),
@@ -1848,7 +966,7 @@ class _IncidentDetailPageState extends State<IncidentDetailPage> {
         title: Text(
           textOf(incident, ['code'], fallback: 'Detalle de incidencia'),
         ),
-        actions: [IconButton(onPressed: load, icon: const Icon(Icons.refresh))],
+        actions: [IconButton(onPressed: load, icon: const Icon(CupertinoIcons.refresh))],
       ),
       body: ListView(
         padding: const EdgeInsets.all(17),
@@ -1898,7 +1016,7 @@ class _IncidentDetailPageState extends State<IncidentDetailPage> {
               padding: const EdgeInsets.only(top: 10),
               child: FilledButton.icon(
                 onPressed: working ? null : () => transition(next),
-                icon: const Icon(Icons.arrow_forward),
+                icon: const Icon(CupertinoIcons.arrow_right),
                 label: Text('Avanzar a ${stateLabel(next)}'),
               ),
             ),
@@ -1906,7 +1024,7 @@ class _IncidentDetailPageState extends State<IncidentDetailPage> {
           SectionTitle(title: 'Bitácora', trailing: '${events.length} eventos'),
           if (events.isEmpty)
             const EmptyPanel(
-              icon: Icons.history,
+              icon: CupertinoIcons.clock,
               title: 'Sin eventos adicionales',
               message:
                   'Las transiciones futuras aparecerán aquí con usuario y fecha.',
@@ -1915,7 +1033,7 @@ class _IncidentDetailPageState extends State<IncidentDetailPage> {
             final event = mapOf(e);
             return Card(
               child: ListTile(
-                leading: Icon(Icons.history, color: context.dlc.brand),
+                leading: Icon(CupertinoIcons.clock, color: context.dlc.brand),
                 title: Text(
                   textOf(event, [
                     'action',
@@ -2005,7 +1123,7 @@ String stateLabel(String state) => switch (state) {
   'maintenance' => 'En mantenimiento',
   'offline' || 'disabled' => 'Fuera de servicio',
   'faulty' || 'damaged' => 'Dañado',
-  _ => 'Estado por confirmar',
+  _ => statusLabel(state),
 };
 
 const reportPermissions = <String, String>{
@@ -2174,7 +1292,7 @@ class _ReportsPageState extends State<ReportsPage> {
                     Expanded(
                       child: OutlinedButton.icon(
                         onPressed: () => chooseDate(true),
-                        icon: const Icon(Icons.date_range),
+                        icon: const Icon(CupertinoIcons.calendar),
                         label: Text('Desde ${shortDate(from)}'),
                       ),
                     ),
@@ -2182,7 +1300,7 @@ class _ReportsPageState extends State<ReportsPage> {
                     Expanded(
                       child: OutlinedButton.icon(
                         onPressed: () => chooseDate(false),
-                        icon: const Icon(Icons.event),
+                        icon: const Icon(CupertinoIcons.calendar),
                         label: Text('Hasta ${shortDate(to)}'),
                       ),
                     ),
@@ -2207,7 +1325,7 @@ class _ReportsPageState extends State<ReportsPage> {
                               color: Theme.of(context).colorScheme.onPrimary,
                             ),
                           )
-                        : const Icon(Icons.play_arrow),
+                        : const Icon(CupertinoIcons.play),
                     label: Text(
                       creating ? 'Generando…' : 'Generar instantánea',
                     ),
@@ -2230,7 +1348,7 @@ class _ReportsPageState extends State<ReportsPage> {
         if (loading) const LinearProgressIndicator(minHeight: 3),
         if (!loading && runs.isEmpty)
           const EmptyPanel(
-            icon: Icons.analytics_outlined,
+            icon: CupertinoIcons.chart_bar,
             title: 'Aún no hay reportes',
             message:
                 'Genera una instantánea para consultar y exportar el resultado.',
@@ -2260,7 +1378,7 @@ class _ReportsPageState extends State<ReportsPage> {
                     leading: CircleAvatar(
                       backgroundColor: context.dlc.brandContainer,
                       child: Icon(
-                        Icons.insert_chart_outlined,
+                        CupertinoIcons.chart_bar,
                         color: context.dlc.brand,
                       ),
                     ),
@@ -2275,7 +1393,7 @@ class _ReportsPageState extends State<ReportsPage> {
                     subtitle: Text(
                       '${dateLabel(r['createdAt'])} · ${r['rowCount'] ?? '—'} filas · ${textOf(mapOf(r['filters']), ['from'], fallback: '')} – ${textOf(mapOf(r['filters']), ['to'], fallback: '')}',
                     ),
-                    trailing: const Icon(Icons.chevron_right),
+                    trailing: const Icon(CupertinoIcons.chevron_right),
                   ),
                 ),
               ),
@@ -2375,7 +1493,7 @@ class _ReportDetailPageState extends State<ReportDetailPage> {
                                   !widget.controller.can('report.export')
                               ? null
                               : () => export(true),
-                          icon: const Icon(Icons.picture_as_pdf_outlined),
+                          icon: const Icon(CupertinoIcons.doc_richtext),
                           label: const Text('PDF'),
                         ),
                       ),
@@ -2387,7 +1505,7 @@ class _ReportDetailPageState extends State<ReportDetailPage> {
                                   !widget.controller.can('report.export')
                               ? null
                               : () => export(false),
-                          icon: const Icon(Icons.table_view_outlined),
+                          icon: const Icon(CupertinoIcons.rectangle_grid_2x2),
                           label: const Text('Excel'),
                         ),
                       ),
@@ -2401,7 +1519,7 @@ class _ReportDetailPageState extends State<ReportDetailPage> {
           SectionTitle(title: 'Detalle', trailing: '${rows.length} visibles'),
           if (rows.isEmpty && !loading)
             const EmptyPanel(
-              icon: Icons.inbox_outlined,
+              icon: CupertinoIcons.tray,
               title: 'Sin filas para estos filtros',
               message:
                   'La instantánea se conservó; el período no devolvió registros.',
@@ -2553,12 +1671,12 @@ class _CutsPageState extends State<CutsPage> {
         Card(
           child: ListTile(
             leading: Icon(
-              Icons.calendar_today_outlined,
+              CupertinoIcons.calendar,
               color: context.dlc.brand,
             ),
             title: const Text('Fecha operativa'),
             subtitle: Text(dateLabel(date)),
-            trailing: const Icon(Icons.edit_calendar_outlined),
+            trailing: const Icon(CupertinoIcons.calendar_badge_plus),
             onTap: () async {
               final selected = await showDatePicker(
                 context: context,
@@ -2578,7 +1696,7 @@ class _CutsPageState extends State<CutsPage> {
         if (loading) const LinearProgressIndicator(minHeight: 3),
         if (!loading && cuts.isEmpty) ...[
           const EmptyPanel(
-            icon: Icons.receipt_long_outlined,
+            icon: CupertinoIcons.doc_text,
             title: 'No hay cortes generados',
             message:
                 'Genera las dos ventanas para esta fecha. El servidor valida horario y continuidad.',
@@ -2588,7 +1706,7 @@ class _CutsPageState extends State<CutsPage> {
               padding: const EdgeInsets.only(top: 10),
               child: FilledButton.icon(
                 onPressed: generating ? null : generate,
-                icon: const Icon(Icons.auto_awesome),
+                icon: const Icon(CupertinoIcons.sparkles),
                 label: Text(
                   generating ? 'Generando…' : 'Generar los dos cortes',
                 ),
@@ -2644,7 +1762,7 @@ class _CutCard extends StatelessWidget {
               ? context.dlc.optimalContainer
               : context.dlc.brandContainer,
           child: Icon(
-            closed ? Icons.check : Icons.timelapse,
+            closed ? CupertinoIcons.checkmark_alt : CupertinoIcons.timelapse,
             color: closed ? context.dlc.optimal : context.dlc.brand,
           ),
         ),
@@ -2656,7 +1774,7 @@ class _CutCard extends StatelessWidget {
           '${window.isEmpty ? '—' : window} · ${stateLabel(status)}\nVersión ${cut['version'] ?? '—'} · abre el detalle para revisar lecturas',
         ),
         isThreeLine: true,
-        trailing: const Icon(Icons.chevron_right),
+        trailing: const Icon(CupertinoIcons.chevron_right),
       ),
     );
   }
@@ -2765,7 +1883,7 @@ class _CutDetailPageState extends State<CutDetailPage> {
           IconButton(
             onPressed: working ? null : load,
             tooltip: 'Actualizar',
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(CupertinoIcons.refresh),
           ),
         ],
       ),
@@ -2812,7 +1930,7 @@ class _CutDetailPageState extends State<CutDetailPage> {
                         version,
                       );
                     }, 'Corte abierto; se congeló el equipo esperado.'),
-              icon: const Icon(Icons.lock_open),
+              icon: const Icon(CupertinoIcons.lock_open),
               label: const Text('Abrir corte'),
             ),
           ],
@@ -2844,7 +1962,7 @@ class _CutDetailPageState extends State<CutDetailPage> {
                           working || !widget.controller.can('cut.capture')
                           ? null
                           : () => capture(n),
-                      icon: Icon(Icons.edit_note, color: context.dlc.brand),
+                      icon: Icon(CupertinoIcons.square_pencil, color: context.dlc.brand),
                     ),
                   ),
                 ),
@@ -2864,7 +1982,7 @@ class _CutDetailPageState extends State<CutDetailPage> {
               return Card(
                 child: ListTile(
                   leading: Icon(
-                    Icons.opacity_outlined,
+                    CupertinoIcons.drop,
                     color: context.dlc.brand,
                   ),
                   title: Text(
@@ -2878,7 +1996,7 @@ class _CutDetailPageState extends State<CutDetailPage> {
                     onPressed: working || !widget.controller.can('cut.capture')
                         ? null
                         : () => measureTank(tank),
-                    icon: Icon(Icons.edit_outlined, color: context.dlc.brand),
+                    icon: Icon(CupertinoIcons.pencil, color: context.dlc.brand),
                   ),
                 ),
               );
@@ -2894,7 +2012,7 @@ class _CutDetailPageState extends State<CutDetailPage> {
                         version,
                       );
                     }, 'Conciliación preparada.'),
-              icon: const Icon(Icons.fact_check_outlined),
+              icon: const Icon(CupertinoIcons.checkmark_rectangle),
               label: const Text('Preparar conciliación'),
             ),
           ],
@@ -2905,7 +2023,7 @@ class _CutDetailPageState extends State<CutDetailPage> {
               (p) => Card(
                 child: ListTile(
                   leading: Icon(
-                    Icons.water_drop_outlined,
+                    CupertinoIcons.drop,
                     color: context.dlc.brand,
                   ),
                   title: Text(
@@ -2933,8 +2051,8 @@ class _CutDetailPageState extends State<CutDetailPage> {
                   ),
                   trailing: Icon(
                     (num(row['varianceLiters']) == 0)
-                        ? Icons.check_circle
-                        : Icons.warning_amber,
+                        ? CupertinoIcons.checkmark_circle
+                        : CupertinoIcons.exclamationmark_triangle,
                     color: (num(row['varianceLiters']) == 0)
                         ? context.dlc.optimal
                         : context.dlc.brand,
@@ -2946,7 +2064,7 @@ class _CutDetailPageState extends State<CutDetailPage> {
               final row = mapOf(raw);
               return Card(
                 child: ListTile(
-                  leading: Icon(Icons.opacity_outlined, color: context.dlc.ink),
+                  leading: Icon(CupertinoIcons.drop, color: context.dlc.ink),
                   title: Text(
                     '${textOf(row, ['tankCode'], fallback: 'Tanque')} · ${textOf(row, ['fuelName'], fallback: 'Combustible')}',
                   ),
@@ -2990,7 +2108,7 @@ class _CutDetailPageState extends State<CutDetailPage> {
                 onPressed: working || !widget.controller.can('cut.close')
                     ? null
                     : review,
-                icon: const Icon(Icons.rule_folder_outlined),
+                icon: const Icon(CupertinoIcons.folder),
                 label: const Text('Aprobar discrepancia / revisión'),
               ),
             const SizedBox(height: 8),
@@ -3027,7 +2145,7 @@ class _CutDetailPageState extends State<CutDetailPage> {
                           );
                         }, 'Corte cerrado y auditado.');
                     },
-              icon: const Icon(Icons.lock_outline),
+              icon: const Icon(CupertinoIcons.lock),
               label: const Text('Cerrar corte'),
             ),
           ],
@@ -3218,319 +2336,13 @@ class _CutDetailPageState extends State<CutDetailPage> {
   }
 }
 
-class AccountPage extends StatelessWidget {
-  const AccountPage({required this.controller, super.key});
-  final OperationsController controller;
-  @override
-  Widget build(BuildContext context) {
-    final u = controller.identity!;
-    return ListView(
-      padding: const EdgeInsets.all(18),
-      children: [
-        BrandHeader(
-          title: 'Mi cuenta',
-          subtitle: 'Perfil verificado por el servidor',
-        ),
-        const SizedBox(height: 14),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(17),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  u.displayName,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 20,
-                  ),
-                ),
-                Text(u.email, style: TextStyle(color: context.dlc.muted)),
-                const Divider(height: 24),
-                ...u.roles.map(
-                  (r) => Padding(
-                    padding: const EdgeInsets.only(bottom: 5),
-                    child: Text(
-                      '${r.name}${r.branchId == null ? ' · Red' : ''}',
-                      style: TextStyle(color: context.dlc.ink),
-                    ),
-                  ),
-                ),
-                if (controller.branch != null)
-                  Text(
-                    'Sucursal: ${controller.branch!.name}',
-                    style: TextStyle(color: context.dlc.muted),
-                  ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(17),
-            child: ThemeModeSelector(controller: controller.themeController),
-          ),
-        ),
-        if (controller.globalPermissions.contains('branch.manage')) ...[
-          const SizedBox(height: 12),
-          Card(
-            child: ListTile(
-              leading: Icon(
-                Icons.add_business_outlined,
-                color: context.dlc.brand,
-              ),
-              title: const Text(
-                'Alta de sucursal',
-                style: TextStyle(fontWeight: FontWeight.w800),
-              ),
-              subtitle: const Text('Crear o continuar borradores de sucursal'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute<void>(
-                  builder: (_) => BranchOnboardingScreen(
-                    api: controller.api,
-                    onActivated: () => controller.refresh(),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-        if (controller.globalPermissions.any(
-          (p) => p.startsWith('loyalty.program.'),
-        )) ...[
-          const SizedBox(height: 12),
-          Card(
-            child: ListTile(
-              leading: Icon(Icons.loyalty_outlined, color: context.dlc.brand),
-              title: const Text(
-                'Programa de puntos',
-                style: TextStyle(fontWeight: FontWeight.w800),
-              ),
-              subtitle: const Text('Tasa central, versiones y aprobación'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute<void>(
-                  builder: (_) => LoyaltyProgramsScreen(
-                    api: controller.api,
-                    permissions: controller.globalPermissions,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-        if (({...controller.permissions, ...controller.globalPermissions}).any(
-          (p) =>
-              p == 'promotion.read' ||
-              p == 'promotion.manage' ||
-              p == 'promotion.network.manage',
-        )) ...[
-          const SizedBox(height: 12),
-          Card(
-            child: ListTile(
-              leading: Icon(
-                Icons.local_offer_outlined,
-                color: context.dlc.brand,
-              ),
-              title: const Text(
-                'Promociones y ofertas',
-                style: TextStyle(fontWeight: FontWeight.w800),
-              ),
-              subtitle: const Text(
-                'Reglas, calendario, condiciones y revisión',
-              ),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute<void>(
-                  builder: (_) => PromotionsScreen(
-                    api: controller.api,
-                    branchId: controller.branch?.id,
-                    branchTimeZone:
-                        controller.branch?.timezone ?? 'America/El_Salvador',
-                    permissions: {
-                      ...controller.permissions,
-                      ...controller.globalPermissions,
-                    },
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-        if (controller.branch != null &&
-            controller.can('infrastructure.read')) ...[
-          const SizedBox(height: 12),
-          Card(
-            child: ListTile(
-              leading: Icon(
-                Icons.settings_input_component_outlined,
-                color: context.dlc.brand,
-              ),
-              title: const Text(
-                'Infraestructura de sucursal',
-                style: TextStyle(fontWeight: FontWeight.w800),
-              ),
-              subtitle: const Text(
-                'Combustibles, tanques, dispensadores, boquillas y saldos iniciales',
-              ),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute<void>(
-                  builder: (_) => InfrastructureSetupScreen(
-                    api: controller.api,
-                    branchId: controller.branch!.id,
-                    permissions: controller.permissions,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-        if (controller.branch != null && controller.can('staff.read')) ...[
-          const SizedBox(height: 12),
-          Card(
-            child: ListTile(
-              leading: Icon(Icons.groups_2_outlined, color: context.dlc.brand),
-              title: const Text(
-                'Personal y turnos',
-                style: TextStyle(fontWeight: FontWeight.w800),
-              ),
-              subtitle: const Text(
-                'Personal activo, agenda semanal y programación de turnos',
-              ),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute<void>(
-                  builder: (_) => StaffShiftsScreen(
-                    api: controller.api,
-                    branchId: controller.branch!.id,
-                    permissions: controller.permissions,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-        if (controller.branch != null &&
-            controller.can('maintenance.plan')) ...[
-          const SizedBox(height: 12),
-          Card(
-            child: ListTile(
-              leading: Icon(Icons.build_outlined, color: context.dlc.brand),
-              title: const Text(
-                'Mantenimiento',
-                style: TextStyle(fontWeight: FontWeight.w800),
-              ),
-              subtitle: const Text(
-                'Órdenes, tareas, finalización y verificación',
-              ),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute<void>(
-                  builder: (_) => MaintenanceScreen(
-                    api: controller.api,
-                    branchId: controller.branch!.id,
-                    permissions: controller.permissions,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-        if (controller.branch != null && controller.can('purchase.read')) ...[
-          const SizedBox(height: 12),
-          Card(
-            child: ListTile(
-              leading: Icon(
-                Icons.local_shipping_outlined,
-                color: context.dlc.brand,
-              ),
-              title: const Text(
-                'Compras de combustible',
-                style: TextStyle(fontWeight: FontWeight.w800),
-              ),
-              subtitle: const Text(
-                'Proveedores, aprobación, órdenes y recepción a tanque',
-              ),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute<void>(
-                  builder: (_) => ProcurementScreen(
-                    api: controller.api,
-                    branchId: controller.branch!.id,
-                    permissions: controller.permissions,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-        if (controller.branch != null &&
-            (controller.can('cash.read') || controller.can('cash.open'))) ...[
-          const SizedBox(height: 12),
-          Card(
-            child: ListTile(
-              leading: Icon(
-                Icons.point_of_sale_outlined,
-                color: context.dlc.brand,
-              ),
-              title: const Text(
-                'Cajas y turnos',
-                style: TextStyle(fontWeight: FontWeight.w800),
-              ),
-              subtitle: const Text(
-                'Abrir turno, movimientos y arqueo de cierre',
-              ),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute<void>(
-                  builder: (_) => CashScreen(
-                    api: controller.api,
-                    branchId: controller.branch!.id,
-                    permissions: controller.permissions,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-        const SizedBox(height: 14),
-        OutlinedButton.icon(
-          onPressed: controller.logout,
-          icon: const Icon(Icons.logout),
-          label: const Text('Cerrar sesión'),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: context.dlc.critical,
-            minimumSize: const Size.fromHeight(49),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 class BrandHeader extends StatelessWidget {
   const BrandHeader({required this.title, required this.subtitle, super.key});
   final String title, subtitle;
   @override
   Widget build(BuildContext context) => Row(
     children: [
-      Image.asset(
-        'assets/branding/dlc_logo.png',
-        width: 74,
-        height: 53,
-        fit: BoxFit.contain,
-      ),
+      const BrandDrop(size: 40),
       const SizedBox(width: 10),
       Expanded(
         child: Column(
@@ -3565,7 +2377,7 @@ class BranchCard extends StatelessWidget {
       contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 6),
       leading: CircleAvatar(
         backgroundColor: context.dlc.brandContainer,
-        child: Icon(Icons.storefront_outlined, color: context.dlc.brand),
+        child: Icon(CupertinoIcons.bag, color: context.dlc.brand),
       ),
       title: Text(
         branch.name,
@@ -3575,12 +2387,12 @@ class BranchCard extends StatelessWidget {
         '${branch.code} · ${branch.zone} · ${countryName(branch.countryCode)}',
       ),
       trailing: branch.isActive
-          ? const Icon(Icons.chevron_right)
+          ? const Icon(CupertinoIcons.chevron_right)
           : Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 BranchStatusChip(status: branch.status),
-                const Icon(Icons.chevron_right),
+                const Icon(CupertinoIcons.chevron_right),
               ],
             ),
     ),
@@ -3674,7 +2486,7 @@ class AlertCard extends StatelessWidget {
     color: critical ? context.dlc.criticalContainer : context.dlc.surface,
     child: ListTile(
       leading: Icon(
-        critical ? Icons.warning_amber_rounded : Icons.info_outline,
+        critical ? CupertinoIcons.exclamationmark_triangle : CupertinoIcons.info_circle,
         color: critical ? context.dlc.critical : context.dlc.brand,
       ),
       title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
@@ -3725,7 +2537,7 @@ class ErrorBox extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(Icons.error_outline, color: context.dlc.critical),
+              Icon(CupertinoIcons.exclamationmark_circle, color: context.dlc.critical),
               const SizedBox(width: 9),
               Expanded(
                 child: Text(
@@ -3809,7 +2621,23 @@ class LoadingPage extends StatelessWidget {
   const LoadingPage({super.key});
   @override
   Widget build(BuildContext context) => Scaffold(
-    body: Center(child: CircularProgressIndicator(color: context.dlc.brand)),
+    body: Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const BrandWordmark(height: 64),
+          const SizedBox(height: 20),
+          SizedBox(
+            width: 28,
+            height: 28,
+            child: CircularProgressIndicator(
+              strokeWidth: 3,
+              color: context.dlc.brand,
+            ),
+          ),
+        ],
+      ),
+    ),
   );
 }
 

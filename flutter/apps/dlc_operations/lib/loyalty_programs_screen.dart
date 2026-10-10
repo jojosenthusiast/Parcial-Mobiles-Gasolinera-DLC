@@ -1,6 +1,8 @@
 import 'package:dlc_api/dlc_api.dart';
 import 'app_theme.dart';
 import 'package:flutter/material.dart';
+import 'labels.dart';
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 
 class LoyaltyProgramsScreen extends StatefulWidget {
   const LoyaltyProgramsScreen({
@@ -165,7 +167,7 @@ class _LoyaltyProgramsScreenState extends State<LoyaltyProgramsScreen> {
                   Card(
                     color: context.dlc.criticalContainer,
                     child: ListTile(
-                      leading: const Icon(Icons.error_outline),
+                      leading: const Icon(CupertinoIcons.exclamationmark_circle),
                       title: Text(error!),
                     ),
                   ),
@@ -225,7 +227,7 @@ class _LoyaltyProgramsScreenState extends State<LoyaltyProgramsScreen> {
             alignment: Alignment.centerRight,
             child: FilledButton.icon(
               onPressed: busy ? null : _create,
-              icon: const Icon(Icons.save_outlined),
+              icon: const Icon(CupertinoIcons.tray_arrow_down),
               label: const Text('Crear borrador'),
             ),
           ),
@@ -291,7 +293,7 @@ class _LoyaltyProgramsScreenState extends State<LoyaltyProgramsScreen> {
                     ),
                   ),
                 ),
-                Chip(label: Text(status.replaceAll('_', ' '))),
+                StatusBadge(status),
               ],
             ),
             Text(

@@ -1,11 +1,12 @@
 import 'reflect-metadata';
-import { ValidationPipe } from '@nestjs/common';
+import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { json, type NextFunction, type Request, type Response } from 'express';
 import { AppModule } from './app.module.js';
 import { HttpErrorsFilter } from './core/http-errors.filter.js';
 import { requestID } from './core/request-id.middleware.js';
+import { ReportsWorker } from './reports/reports.worker.js';
 import { httpMetricsMiddleware } from './observability/http-metrics.js';
 
 async function bootstrap(): Promise<void> {
@@ -50,6 +51,25 @@ async function bootstrap(): Promise<void> {
     throw new Error('PORT debe ser un entero entre 1 y 65535.');
   }
   await app.listen(port, '0.0.0.0');
+  if (process.env.REPORTS_WORKER_INLINE === 'true') startInlineReportsWorker(app);
+}
+
+/**
+ * Single-process deployments (e.g. a free web service) have no separate `reports/worker.main` process, so report
+ * exports would stay queued forever. With REPORTS_WORKER_INLINE=true the API drains the same job queue itself.
+ */
+function startInlineReportsWorker(app: INestApplication): void {
+  const worker = app.get(ReportsWorker);
+  let stopped = false;
+  process.once('SIGTERM', () => { stopped = true; });
+  process.once('SIGINT', () => { stopped = true; });
+  const tick = async (): Promise<void> => {
+    if (stopped) return;
+    let delayMs = 2000;
+    try { if (await worker.runOnce() > 0) delayMs = 0; } catch { delayMs = 5000; }
+    setTimeout(() => { void tick(); }, delayMs);
+  };
+  void tick();
 }
 
 void bootstrap();

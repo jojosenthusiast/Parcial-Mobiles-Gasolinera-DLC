@@ -22,6 +22,12 @@ export class UsersController {
   }
 
   @RequirePermission('user.manage')
+  @Get('roles')
+  roles(@Req() request: Request) {
+    return this.users.listRoles(request.principal!);
+  }
+
+  @RequirePermission('user.manage')
   @Post('users/invitations')
   async invite(@Body() body: InviteUserDto, @Req() request: Request) {
     const principal = request.principal!;

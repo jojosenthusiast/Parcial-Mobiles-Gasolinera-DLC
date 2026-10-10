@@ -42,11 +42,18 @@ export class UserAdminService {
     return { data, meta: { limit, nextCursor: hasMore ? data.at(-1)!.id : null } };
   }
 
+  async listRoles(actor: AuthPrincipal) {
+    const result = await this.pool.query(
+      'SELECT id, code, name FROM roles WHERE organization_id = $1 ORDER BY name', [actor.organizationId],
+    );
+    return { data: result.rows };
+  }
+
   async invite(input: {
     actor: AuthPrincipal; email: string; displayName: string; roleId: string;
     branchId?: string | null; employeeId?: string | null; correlationId: string;
   }): Promise<{ userId: string; activationToken: string; expiresAt: string }> {
-    if (process.env.NODE_ENV === 'production') throw new ServiceUnavailableException('La entrega segura de invitaciones no está configurada.');
+    if (!manualAccountDeliveryAllowed()) throw new ServiceUnavailableException('La entrega segura de invitaciones no está configurada.');
     const email = input.email.trim().normalize('NFKC').toLowerCase();
     const activationToken = randomBytes(32).toString('base64url');
     const initialHash = await argon2.hash(randomBytes(32), { type: argon2.argon2id });
@@ -88,7 +95,7 @@ export class UserAdminService {
   }
 
   async issuePasswordReset(userId: string, actor: AuthPrincipal, correlationId: string): Promise<{ resetToken: string; expiresAt: string }> {
-    if (process.env.NODE_ENV === 'production') throw new ServiceUnavailableException('La entrega segura de restablecimiento no está configurada.');
+    if (!manualAccountDeliveryAllowed()) throw new ServiceUnavailableException('La entrega segura de restablecimiento no está configurada.');
     const resetToken = randomBytes(32).toString('base64url');
     const client = await this.pool.connect();
     try {
@@ -217,6 +224,15 @@ export class UserAdminService {
       client.release();
     }
   }
+}
+
+/**
+ * Without an email provider, invitations and password resets are delivered by the signed-in administrator
+ * (the one-time token is returned in the response). Production keeps this off unless the operator opts in
+ * with ALLOW_MANUAL_ACCOUNT_DELIVERY=true; outside production it is always allowed.
+ */
+export function manualAccountDeliveryAllowed(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.NODE_ENV !== 'production' || env.ALLOW_MANUAL_ACCOUNT_DELIVERY === 'true';
 }
 
 function hashToken(token: string): Buffer {

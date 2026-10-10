@@ -1,6 +1,8 @@
 import 'package:dlc_api/dlc_api.dart';
 import 'app_theme.dart';
 import 'package:flutter/material.dart';
+import 'labels.dart';
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 
 class MaintenanceScreen extends StatefulWidget {
   const MaintenanceScreen({required this.api, required this.branchId, required this.permissions, super.key});
@@ -43,18 +45,18 @@ class _MaintenanceScreenState extends State<MaintenanceScreen> {
   Future<void> _mutate(Future<dynamic> Function() action)async{setState(()=>_loading=true);_error=null;try{await action();await _load();}on DlcApiException catch(e){if(mounted)setState(()=>_error=e.message);await _load();}}
   void _message(String v){ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(v)));}
   @override Widget build(BuildContext context)=>Scaffold(
-    appBar:AppBar(title:const Text('Mantenimiento'),actions:[IconButton(onPressed:_loading?null:_load,tooltip:'Actualizar',icon:const Icon(Icons.refresh))]),
-    floatingActionButton:widget.permissions.contains('maintenance.plan')?FloatingActionButton.extended(onPressed:_loading?null:_create,icon:const Icon(Icons.add),label:const Text('Nueva orden')):null,
+    appBar:AppBar(title:const Text('Mantenimiento'),actions:[IconButton(onPressed:_loading?null:_load,tooltip:'Actualizar',icon:const Icon(CupertinoIcons.refresh))]),
+    floatingActionButton:widget.permissions.contains('maintenance.plan')?FloatingActionButton.extended(onPressed:_loading?null:_create,icon:const Icon(CupertinoIcons.add),label:const Text('Nueva orden')):null,
     body:_loading?const Center(child:CircularProgressIndicator()):RefreshIndicator(onRefresh:_load,child:ListView(padding:const EdgeInsets.all(16),children:[
-      if(_error!=null)Card(color:context.dlc.criticalContainer,child:ListTile(leading:const Icon(Icons.error_outline),title:Text(_error!))),
-      if(_orders.isEmpty)const Card(child:ListTile(leading:Icon(Icons.build_outlined),title:Text('No hay órdenes de mantenimiento abiertas.'))),
+      if(_error!=null)Card(color:context.dlc.criticalContainer,child:ListTile(leading:const Icon(CupertinoIcons.exclamationmark_circle),title:Text(_error!))),
+      if(_orders.isEmpty)const Card(child:ListTile(leading:Icon(CupertinoIcons.wrench),title:Text('No hay órdenes de mantenimiento abiertas.'))),
       ..._orders.map((row){final status=_str(row['status']);final asset=_assets.where((a)=>_str(a['id'])==_str(row['assetProfileId'])).firstOrNull;final assetLabel=asset==null?_str(row['assetType']):'${_str(asset['assetType'])} · ${_str(asset['assetCode']??asset['assetId'])}';
         final canWork=widget.permissions.contains('maintenance.work');final actions=<Widget>[];
         if(status=='planned'&&canWork)actions.add(TextButton(onPressed:()=>_start(row),child:const Text('Iniciar')));
         if(status=='in_progress'&&canWork)actions.add(TextButton(onPressed:()=>_complete(row),child:const Text('Registrar tarea y completar')));
         if(status=='completed'&&widget.permissions.contains('maintenance.verify'))actions.add(TextButton(onPressed:()=>_advance(row,'verified'),child:const Text('Verificar')));
         return Card(margin:const EdgeInsets.only(bottom:8),child:Padding(padding:const EdgeInsets.all(14),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-          Row(children:[Expanded(child:Text(assetLabel,style:const TextStyle(fontWeight:FontWeight.w800))),Chip(label:Text(status))]),
+          Row(children:[Expanded(child:Text(assetLabel,style:const TextStyle(fontWeight:FontWeight.w800))),StatusBadge(status)]),
           Text('${_str(row['kind'])} · ${_str(row['description'])}'),
           if(actions.isNotEmpty)Wrap(alignment:WrapAlignment.end,children:actions),
         ])));}),

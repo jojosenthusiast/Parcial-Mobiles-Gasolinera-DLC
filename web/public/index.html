@@ -1,31 +1,35 @@
 <!doctype html>
 <html lang="es">
 <head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="color-scheme" content="light dark">
-  <meta name="theme-color" content="#f5f1e7"><title>DLC · Operaciones</title>
+  <meta name="theme-color" content="#faf5ec"><title>DLC · Operaciones</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png">
+  <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
   <script src="/theme.js"></script>
-  <link rel="stylesheet" href="/styles.css"><script type="module" src="/app.js"></script>
+  <link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/analytics.css"><script type="module" src="/app.js"></script>
 </head>
 <body>
   <div id="login" class="login-shell" hidden>
     <div class="login-card">
-      <div class="theme-switch" role="group" aria-label="Tema de la interfaz"><button type="button" data-theme-choice="light" aria-pressed="false"><span aria-hidden="true">☀</span><span class="theme-label">Claro</span></button><button type="button" data-theme-choice="dark" aria-pressed="false"><span aria-hidden="true">☾</span><span class="theme-label">Oscuro</span></button><button type="button" data-theme-choice="system" aria-pressed="true"><span aria-hidden="true">◐</span><span class="theme-label">Sistema</span></button></div>
-      <div class="brand"><span class="brand-drop">◆</span><span>DLC</span></div>
-      <p class="eyebrow">GESTIÓN DE ESTACIONES</p><h1>Iniciar sesión</h1><p class="muted">Acceso seguro para gerencia y operación.</p>
+      <div class="login-brand"><img src="/assets/dlc-wordmark.png" alt="DLC Gasolineras" width="210" height="70"></div>
+      <p class="eyebrow">Gestión de estaciones</p><h1>Iniciar sesión</h1><p class="muted">Acceso seguro para gerencia y operación.</p>
       <form id="login-form" data-validate="messages"><label>Correo electrónico<input name="email" type="email" autocomplete="username" required maxlength="254"></label>
         <label>Contraseña<input name="password" type="password" autocomplete="current-password" required minlength="1"></label>
-        <button class="primary wide" type="submit">Entrar <span>→</span></button><p id="login-error" class="error" role="alert"></p>
+        <button class="btn btn-create wide" type="submit"><span>Entrar</span><svg class="icon" width="18" height="18" aria-hidden="true" focusable="false"><use href="#i-chevron-right"/></svg></button><p id="login-error" class="error" role="alert"></p>
       </form><small>Los permisos y sucursales disponibles dependen de tu cuenta.</small>
     </div>
   </div>
   <div id="shell" class="shell" hidden>
     <a class="skip-link" href="#content">Saltar al contenido</a>
-    <aside class="sidebar"><a class="brand" href="#dashboard"><span class="brand-drop" aria-hidden="true">◆</span><span>DLC</span></a>
-      <div class="side-caption">OPERACIÓN</div><nav id="navigation" aria-label="Módulos de operación"></nav>
-      <div class="sidebar-bottom"><div class="user-chip"><div class="avatar" id="avatar">D</div><div><b id="user-name">Usuario</b><small id="user-role">DLC</small></div></div><button id="logout" class="logout">Cerrar sesión</button></div>
+    <aside class="sidebar"><a class="brand" href="#dashboard" aria-label="DLC, ir al resumen"><span class="brand-plate"><img class="brand-wordmark" src="/assets/dlc-wordmark.png" alt="DLC" width="132" height="44"></span></a>
+      <nav id="navigation" aria-label="Módulos de operación"></nav>
+      <div class="sidebar-bottom"><button type="button" class="user-chip" id="user-menu-button" aria-haspopup="menu" aria-expanded="false" aria-label="Menú de perfil"><span class="avatar" id="avatar" aria-hidden="true">D</span><span class="who"><b id="user-name">Usuario</b><small id="user-role">DLC</small></span><svg class="icon" width="18" height="18" aria-hidden="true" focusable="false"><use href="#i-chevron-up"/></svg></button></div>
     </aside>
-    <main><header class="topbar"><div><div class="eyebrow" id="scope-label">DLC · GESTIÓN</div><h1 id="page-title">Resumen</h1></div><div class="top-actions"><select id="global-scope" aria-label="Seleccionar sucursal" hidden></select><div class="theme-switch" role="group" aria-label="Tema de la interfaz"><button type="button" data-theme-choice="light" aria-pressed="false"><span aria-hidden="true">☀</span><span class="theme-label">Claro</span></button><button type="button" data-theme-choice="dark" aria-pressed="false"><span aria-hidden="true">☾</span><span class="theme-label">Oscuro</span></button><button type="button" data-theme-choice="system" aria-pressed="true"><span aria-hidden="true">◐</span><span class="theme-label">Sistema</span></button></div><span class="live-dot">En línea</span><button class="icon-button" id="refresh" aria-label="Actualizar datos">↻</button></div></header>
+    <main>
+      <div class="scopebar-wrap"><div id="scopebar" class="scopebar" role="group" aria-label="Alcance de los datos"></div><div class="top-actions"><span class="live-dot" id="live-status">En línea</span><button type="button" class="icon-button" id="refresh" aria-label="Actualizar datos" title="Actualizar datos"><svg class="icon" width="20" height="20" aria-hidden="true" focusable="false"><use href="#i-refresh"/></svg></button></div></div>
+      <header class="topbar"><div><div class="eyebrow" id="scope-label">DLC · Gestión</div><h1 id="page-title">Resumen</h1></div></header>
+      <div id="module-banner"></div>
       <section id="content" aria-live="polite"></section>
     </main>
   </div>
