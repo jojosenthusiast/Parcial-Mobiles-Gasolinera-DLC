@@ -1,0 +1,11 @@
+name: dlc_api
+description: Cliente API y persistencia segura de sesión para aplicaciones DLC.
+publish_to: none
+version: 0.1.0+1
+environment:
+  sdk: '>=3.10.0 <4.0.0'
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_secure_storage: ^11.2.0
+  http: ^1.6.0

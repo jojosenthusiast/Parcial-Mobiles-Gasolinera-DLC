@@ -1,0 +1,47 @@
+{
+  "name": "@dlc/server",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=24.15.0 <25"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "start:worker": "node dist/reports/worker.main.js",
+    "start:dev": "nest start --watch",
+    "lint": "eslint src test scripts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test:unit": "pnpm build && node --test test/*.test.mjs",
+    "test:integration": "node --test test/integration/*.test.mjs",
+    "test:contract": "node --test test/contracts/*.test.mjs",
+    "db:migrate": "node --env-file-if-exists=.env scripts/migrate.mjs",
+    "db:seed:demo": "node --env-file-if-exists=.env scripts/seed-demo.mjs"
+  },
+  "dependencies": {
+    "@nestjs/common": "12.1.2",
+    "@nestjs/config": "12.0.1",
+    "@nestjs/core": "12.1.2",
+    "@nestjs/platform-express": "12.1.2",
+    "@nestjs/swagger": "12.0.2",
+    "argon2": "0.45.1",
+    "class-transformer": "0.5.1",
+    "class-validator": "0.14.3",
+    "decimal.js": "10.6.0",
+    "express": "5.2.1",
+    "pg": "8.23.1",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.4",
+    "@nestjs/cli": "12.0.8",
+    "@types/express": "5.0.6",
+    "@types/node": "24.12.2",
+    "@types/pg": "8.23.1",
+    "eslint": "9.39.4",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.70.0"
+  }
+}

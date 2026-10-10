@@ -1,0 +1,7 @@
+sales.controller.ts syntax PASS; decorators removed, not a Nest build/typecheck
+sales.dto.ts syntax PASS; decorators removed, not a Nest build/typecheck
+sales.module.ts syntax PASS; decorators removed, not a Nest build/typecheck
+sales.service.ts syntax PASS; decorators removed, not a Nest build/typecheck
+tax-policy.controller.ts syntax PASS; decorators removed, not a Nest build/typecheck
+tax-policy.dto.ts syntax PASS; decorators removed, not a Nest build/typecheck
+tax-policy.service.ts syntax PASS; decorators removed, not a Nest build/typecheck

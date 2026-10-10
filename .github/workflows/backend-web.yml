@@ -1,0 +1,38 @@
+name: Backend and web checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  node-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Get source
+        uses: actions/checkout@v6
+      - name: Configure Node and pnpm
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24.19.0
+      - name: Activate pinned pnpm
+        run: corepack enable
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Verify contracts and migration plan
+        run: node scripts/verify-plan.mjs
+      - name: Verify release contents
+        run: node scripts/verify-release.mjs
+      - name: Check web proxy syntax and tests
+        run: |
+          node --check web/server.mjs
+          node --check web/public/app.js
+          pnpm test:web
+      - name: Run API contract tests
+        run: pnpm --filter @dlc/server test:contract
+      - name: Build API and run unit tests
+        run: pnpm --filter @dlc/server test:unit

@@ -1,0 +1,6 @@
+packages:
+  - server
+  - web
+allowBuilds:
+  '@scarf/scarf': true
+  argon2: true

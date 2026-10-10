@@ -1,0 +1,57 @@
+groups:
+  - name: dlc-api
+    rules:
+      - alert: DLCHighServerErrorRate
+        expr: |
+          sum(rate(dlc_http_requests_total{status=~"5.."}[5m]))
+          / clamp_min(sum(rate(dlc_http_requests_total[5m])), 0.001) > 0.05
+          and sum(rate(dlc_http_requests_total[5m])) > 0.1
+        for: 10m
+        labels:
+          severity: page
+          service: dlc-api
+        annotations:
+          summary: "La API DLC mantiene una tasa elevada de errores 5xx"
+          description: "Más del 5% de las solicitudes completadas fallan con 5xx durante 10 minutos. Revisar trazas con request ID y estado de PostgreSQL."
+
+      - alert: DLCHighRequestLatency
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(dlc_http_request_duration_seconds_bucket[5m]))
+          ) > 1.5
+        for: 10m
+        labels:
+          severity: ticket
+          service: dlc-api
+        annotations:
+          summary: "La latencia p95 de la API DLC supera 1.5 segundos"
+          description: "Revisar la ruta agregada, presión de la base y esperas del pool; las etiquetas no contienen valores de negocio."
+
+      - alert: DLCDatabasePoolWaiting
+        expr: dlc_pg_pool_connections{state="waiting"} > 0
+        for: 5m
+        labels:
+          severity: ticket
+          service: dlc-api
+        annotations:
+          summary: "Hay solicitudes esperando una conexión PostgreSQL"
+          description: "Revisar latencia de consultas, DATABASE_POOL_MAX y límites de conexión del proveedor."
+
+      - alert: DLCHighProcessMemory
+        expr: dlc_process_resident_memory_bytes > 1073741824
+        for: 10m
+        labels:
+          severity: ticket
+          service: dlc-api
+        annotations:
+          summary: "La API DLC supera 1 GiB de memoria residente"
+          description: "Revisar crecimiento del proceso, volumen de exportaciones y tamaño de los lotes."
+
+      - alert: DLCApiRestarted
+        expr: resets(dlc_process_uptime_seconds[15m]) > 0
+        labels:
+          severity: info
+          service: dlc-api
+        annotations:
+          summary: "Prometheus observó un reinicio de la API DLC"
+          description: "Los contadores HTTP viven en memoria y comienzan de nuevo al reiniciar el proceso."

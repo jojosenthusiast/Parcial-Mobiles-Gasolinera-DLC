@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#f5f1e7"><title>DLC · Operaciones</title>
+  <link rel="stylesheet" href="/styles.css"><script type="module" src="/app.js"></script>
+</head>
+<body>
+  <div id="login" class="login-shell" hidden>
+    <div class="login-card"><div class="brand"><span class="brand-drop">◆</span><span>DLC</span></div>
+      <p class="eyebrow">GESTIÓN DE ESTACIONES</p><h1>Iniciar sesión</h1><p class="muted">Acceso seguro para gerencia y operación.</p>
+      <form id="login-form"><label>Correo electrónico<input name="email" type="email" autocomplete="username" required maxlength="254"></label>
+        <label>Contraseña<input name="password" type="password" autocomplete="current-password" required minlength="1"></label>
+        <button class="primary wide" type="submit">Entrar <span>→</span></button><p id="login-error" class="error" role="alert"></p>
+      </form><small>Los permisos y sucursales disponibles dependen de tu cuenta.</small>
+    </div>
+  </div>
+  <div id="shell" class="shell" hidden>
+    <a class="skip-link" href="#content">Saltar al contenido</a>
+    <aside class="sidebar"><a class="brand" href="#dashboard"><span class="brand-drop" aria-hidden="true">◆</span><span>DLC</span></a>
+      <div class="side-caption">OPERACIÓN</div><nav id="navigation" aria-label="Módulos de operación"></nav>
+      <div class="sidebar-bottom"><div class="user-chip"><div class="avatar" id="avatar">D</div><div><b id="user-name">Usuario</b><small id="user-role">DLC</small></div></div><button id="logout" class="logout">Cerrar sesión</button></div>
+    </aside>
+    <main><header class="topbar"><div><div class="eyebrow" id="scope-label">DLC · GESTIÓN</div><h1 id="page-title">Resumen</h1></div><div class="top-actions"><select id="global-scope" aria-label="Seleccionar sucursal" hidden></select><span class="live-dot">En línea</span><button class="icon-button" id="refresh" aria-label="Actualizar datos">↻</button></div></header>
+      <section id="content" aria-live="polite"></section>
+    </main>
+  </div>
+  <div id="toast" class="toast" role="status"></div>
+</body></html>

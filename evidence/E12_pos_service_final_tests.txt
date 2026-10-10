@@ -1,0 +1,23 @@
+(node:33) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ catalog normalizes identity and replays equivalent decimal without another publication (2.310331ms)
+✔ changed command data or actor cannot replay publication (0.791476ms)
+✔ catalog edits require current version and preserve product identity (0.472962ms)
+✔ permissions are rechecked for every mutation and read before connecting (0.822371ms)
+✔ receipt retry preserves source and unknown cost without duplicate receipt or audit (0.858535ms)
+✔ receipt validates real dates, whole units, source and nonnegative explicit costs (1.262975ms)
+✔ POS sale uses server posting transaction and replays without a second inventory call (0.520773ms)
+✔ create-only user cannot replay a ticket owned by another actor (0.285825ms)
+✔ empty/oversized baskets, duplicate products and malformed quantities fail before SQL mutation (0.607161ms)
+✔ catalog pagination retains branch/tenant filters and hides cost without permission (0.351182ms)
+✔ malformed catalog filters and lot cursors are rejected (0.308569ms)
+✔ editing a service without a cost field preserves its previous known cost; explicit null clears it (0.601203ms)
+✔ product master-detail uses the exact tenant/branch/product scope even for inactive products (1.22593ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 139.210712

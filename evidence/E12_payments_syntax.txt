@@ -1,0 +1,15 @@
+PASS syntax-only: server/src/sales/payments.controller.ts
+(node:6) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+PASS syntax-only: server/src/sales/payments.dto.ts
+PASS syntax-only: server/src/sales/payments.service.ts
+PASS syntax-only: server/src/sales/pos.controller.ts
+PASS syntax-only: server/src/sales/pos.dto.ts
+PASS syntax-only: server/src/sales/pos.service.ts
+PASS syntax-only: server/src/sales/sales.controller.ts
+PASS syntax-only: server/src/sales/sales.dto.ts
+PASS syntax-only: server/src/sales/sales.module.ts
+PASS syntax-only: server/src/sales/sales.service.ts
+PASS syntax-only: server/src/sales/tax-policy.controller.ts
+PASS syntax-only: server/src/sales/tax-policy.dto.ts
+PASS syntax-only: server/src/sales/tax-policy.service.ts

@@ -1,0 +1,21 @@
+name: dlc_operations
+description: DLC Operaciones para gerencia y personal de sucursales.
+publish_to: none
+version: 0.1.0+1
+environment:
+  sdk: '>=3.10.0 <4.0.0'
+dependencies:
+  flutter:
+    sdk: flutter
+  dlc_api:
+    path: ../../packages/dlc_api
+  image_picker: 1.2.3
+  mobile_scanner: ^7.4.2
+  share_plus: ^13.3.1
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+flutter:
+  uses-material-design: true
+  assets:
+  - assets/branding/dlc_logo.png

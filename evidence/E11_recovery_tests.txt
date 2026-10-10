@@ -1,0 +1,23 @@
+✔ manual mode never fabricates volume or physical confirmation (1.635658ms)
+✔ normal simulated flow has explicit provenance and exact decimal volume (0.378943ms)
+✔ timeout after completion is resolved by query of original snapshot after restart (0.265904ms)
+✔ timeout before start proves no flow instead of inventing a sale (0.181059ms)
+✔ production and unimplemented physical providers cannot silently select simulation (0.7274ms)
+✔ invalid units, zero, excess precision and unknown scenarios are rejected (0.384612ms)
+(node:15) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ timeout does not release reservation; durable query confirms exactly one sale (3.015207ms)
+✔ crash after sale resumes stored observation instead of dispatching again (1.038652ms)
+✔ confirmed no-flow cancels without inventory sale (0.606591ms)
+✔ manual query requires operator verification and leaves facts untouched (0.715022ms)
+✔ new start ID, changed replay payload and denied branch do not send a second start (0.558229ms)
+✔ pending simulated outcome cannot post after environment changes to production (0.42479ms)
+✔ device coordination does not occupy a business pool connection (0.239886ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 159.520242

@@ -1,0 +1,19 @@
+name: dlc_customers
+description: "DLC Clientes: cuenta, puntos, promociones y recompensas."
+publish_to: none
+version: 0.1.0+1
+environment:
+  sdk: '>=3.10.0 <4.0.0'
+dependencies:
+  flutter:
+    sdk: flutter
+  dlc_api:
+    path: ../../packages/dlc_api
+  supabase_flutter: 2.18.0
+  http: 1.6.0
+  qr_flutter: 4.1.0
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+flutter:
+  uses-material-design: true

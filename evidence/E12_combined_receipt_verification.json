@@ -1,0 +1,55 @@
+{
+  "dateUTC": "2026-10-08",
+  "scope": "Comprobante interno combinado de venta de combustible y venta POS",
+  "environment": "Supabase sole/DLC, PostgreSQL 17.11",
+  "migrations": [
+    {
+      "file": "0084_combined_internal_receipts.sql",
+      "sha256": "d41b31f1c53268d0b8b6b09bad95b10263736751c145369dc844fde03c716a77",
+      "supabaseVersion": "20261008203621"
+    },
+    {
+      "file": "0085_combined_receipt_validation_lock.sql",
+      "sha256": "49c8913b110d5bdcb6cc044b3bda96da452da7604aff678af6e6c8c4016f531a",
+      "supabaseVersion": "20261008203905",
+      "purpose": "Elimina colisión de nombres PL/pgSQL detectada al validar una inserción real."
+    }
+  ],
+  "databaseSmoke": {
+    "file": "server/test/sql/fuel-sales-smoke.sql",
+    "result": "PASS",
+    "checks": 25,
+    "fixturesRolledBack": true,
+    "combinedReceiptRowsAfterTest": 0,
+    "coverage": [
+      "Agrupa una venta de combustible y una venta POS sin alterar los asientos fuente.",
+      "Conserva el total combinado y el identificador de autorización solo en la venta de combustible.",
+      "Rechaza duplicados y una combinación con tipos de venta invertidos.",
+      "Impide actualizar o borrar el comprobante combinado.",
+      "Niega lectura a authenticated y anon, y concede SELECT/INSERT al rol de runtime.",
+      "Mantiene cantidades, importes, costos y estados fiscales originales; impuestos no configurados permanecen nulos.",
+      "Rechaza duplicados de venta, venta huérfana, cruces de tenant y cambios al snapshot.",
+      "Ejecuta las fixtures dentro de una subtransacción revertida."
+    ]
+  },
+  "security": {
+    "rlsEnabled": true,
+    "runtimeCanSelectAndInsert": true,
+    "authenticatedCanSelect": false,
+    "anonCanSelect": false,
+    "validationFunctionUsesOrderedQualifiedLock": true,
+    "applicationMigrationLedgerCount": 85,
+    "applicationLedgerChecksumsMatch": true,
+    "supabaseMigrationMetadata": ["20261008203621", "20261008203905"]
+  },
+  "databaseAfterTest": {
+    "organizations": 0,
+    "branches": 0,
+    "combinedReceipts": 0
+  },
+  "limitations": [
+    "El comprobante es interno: no fusiona cobros, devoluciones, impuestos ni cuentas por cobrar.",
+    "La fiscalidad POS no está configurada ni validada.",
+    "SwiftUI no se compiló y no se ejecutó en Simulator porque este entorno no tiene Xcode."
+  ]
+}

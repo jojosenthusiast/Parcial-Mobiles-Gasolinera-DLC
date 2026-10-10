@@ -1,0 +1,11 @@
+✔ server/test/contracts/payments-contract.test.mjs (77.086593ms)
+✔ server/test/contracts/swift-cash-contract.test.mjs (71.386139ms)
+✔ server/test/contracts/swift-payment-ui-contract.test.mjs (72.585158ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 87.754983

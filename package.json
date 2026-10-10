@@ -1,0 +1,25 @@
+{
+  "name": "dlc-gasolineras",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@11.25.0",
+  "engines": { "node": ">=24.15.0 <25" },
+  "scripts": {
+    "lint": "pnpm --filter @dlc/server lint",
+    "typecheck": "pnpm --filter @dlc/server typecheck",
+    "test:unit": "pnpm --filter @dlc/server test:unit",
+    "test:integration": "pnpm --filter @dlc/server test:integration",
+    "test:contract": "pnpm --filter @dlc/server test:contract",
+    "test:flutter-contract": "node --test flutter/test/infrastructure-setup-contract.test.mjs",
+    "test:web": "pnpm --filter @dlc/web test",
+    "build": "pnpm --filter @dlc/server build",
+    "db:migrate": "pnpm --filter @dlc/server db:migrate",
+    "db:seed:demo": "pnpm --filter @dlc/server db:seed:demo",
+    "report:verify": "node scripts/verify-plan.mjs",
+    "acceptance:verify": "node scripts/verify-acceptance-matrix.mjs",
+    "release:verify": "node scripts/verify-release.mjs",
+    "package:source": "node scripts/package-release.mjs",
+    "backup:encrypted": "node scripts/backup.mjs",
+    "restore:check": "node scripts/restore-check.mjs"
+  }
+}

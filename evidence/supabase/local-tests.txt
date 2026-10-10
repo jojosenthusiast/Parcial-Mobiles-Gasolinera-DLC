@@ -1,0 +1,41 @@
+✔ el contrato tiene versión y health routes documentadas (1.069561ms)
+✔ las respuestas del contrato declaran error estructurado (0.154908ms)
+✔ el contrato publica rutas reales de identidad, sesiones y aprobación (0.149139ms)
+✔ el contrato publica navegación maestro-detalle de combustible e infraestructura (0.123121ms)
+✔ el directorio de sucursales permite filtrar todos los estados y paginar (0.85794ms)
+✔ el directorio de tanques documenta búsqueda, estados y ledger paginado (0.187044ms)
+✔ el contrato publica alta reanudable de sucursales y readiness (0.199733ms)
+✔ el contrato publica movimientos inmutables de inventario en unidades explícitas (0.166144ms)
+✔ el contrato separa referencia, propuesta, aprobación y precio vigente (0.158803ms)
+✔ el contrato publica proveedores y transiciones de órdenes de compra (0.43541ms)
+✔ el contrato publica lecturas continuas y reemplazos autorizados de totalizador (5.123175ms)
+✔ repetir una acción idempotente devuelve el detalle actualizado de despacho (1.018877ms)
+✔ el contrato publica autorización, reserva, progreso y conciliación de despacho (0.192983ms)
+✔ el contrato permite recuperar autorizaciones activas con permiso de lectura y cursor (0.176969ms)
+✔ la consulta de despachos limita el alcance y diferencia reservas activas vencidas (1.017334ms)
+✔ el contrato contempla preview de migración como permiso protegido sin publicar inventario (0.110232ms)
+✔ servidor ESM tiene extensiones y destinos locales presentes (63.670549ms)
+✔ all database callers use verified TLS and reject URI overrides (1.881324ms)
+✔ uses a valid CA without disabling certificate verification (1.558469ms)
+✔ a CA file cannot be silently ignored in plaintext mode (0.471173ms)
+✔ local validation defaults to unencrypted TLS mode only for development config (1.240552ms)
+✔ production requires certificate-verified PostgreSQL TLS (0.643626ms)
+✔ rejects unknown TLS modes and ssl options embedded in the connection URL (0.293571ms)
+✔ verifica hash de origen y conserva una propuesta de apertura sin contabilizar (3.031974ms)
+✔ mapeos son deterministas y un hash incorrecto bloquea antes de staging (1.352046ms)
+✔ respaldo corrupto, colección faltante y credenciales se rechazan (0.627502ms)
+✔ las cantidades de apertura fuera de rango y referencias ausentes bloquean preview (0.611519ms)
+✔ exportador conserva el origen byte por byte y no sobrescribe el paquete (151.18552ms)
+✔ exportador no escribe si el snapshot incluye un secreto (60.163611ms)
+✔ el futuro cliente web comparte la API versionada y sus respuestas de error (1.534604ms)
+ℹ tests 30
+ℹ suites 0
+ℹ pass 30
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 335.748938
+
+
+Ejecución posterior al rol runtime y guard de producción: 31 pruebas, 31 PASS, 0 FAIL (Node --test, mismas rutas). Incluye production runtime rejects privileged database accounts.

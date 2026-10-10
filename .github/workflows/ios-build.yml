@@ -1,0 +1,46 @@
+name: iOS build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - name: Get source
+        uses: actions/checkout@v6
+      - name: Select Xcode and show toolchain
+        run: |
+          sudo xcode-select --switch /Applications/Xcode_16.4.app/Contents/Developer
+          xcodebuild -version
+          xcodebuild -list -project DLCGasolineras.xcodeproj
+      - name: Compile iOS simulator target
+        run: >-
+          xcodebuild
+          -project DLCGasolineras.xcodeproj
+          -scheme DLCGasolineras
+          -destination 'generic/platform=iOS Simulator'
+          -derivedDataPath "$RUNNER_TEMP/DLCDerivedData"
+          CODE_SIGNING_ALLOWED=NO
+          build
+      - name: Preserve compiler log
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/DLCDerivedData/Logs/Build/LogStoreManifest.plist" ]; then
+            ditto "$RUNNER_TEMP/DLCDerivedData/Logs/Build" "$RUNNER_TEMP/DLCBuildLogs"
+          else
+            mkdir -p "$RUNNER_TEMP/DLCBuildLogs"
+            xcodebuild -version > "$RUNNER_TEMP/DLCBuildLogs/toolchain.txt"
+          fi
+      - name: Upload build evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: dlc-xcode-build-logs
+          path: ${{ runner.temp }}/DLCBuildLogs
+          if-no-files-found: warn
+          retention-days: 7

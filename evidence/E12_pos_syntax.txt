@@ -1,0 +1,10 @@
+PASS syntax-only: DLCGasolineras_Laboratorio22/server/src/sales/pos.controller.ts
+PASS syntax-only: DLCGasolineras_Laboratorio22/server/src/sales/pos.dto.ts
+PASS syntax-only: DLCGasolineras_Laboratorio22/server/src/sales/pos.service.ts
+PASS syntax-only: DLCGasolineras_Laboratorio22/server/src/sales/sales.controller.ts
+PASS syntax-only: DLCGasolineras_Laboratorio22/server/src/sales/sales.dto.ts
+PASS syntax-only: DLCGasolineras_Laboratorio22/server/src/sales/sales.module.ts
+PASS syntax-only: DLCGasolineras_Laboratorio22/server/src/sales/sales.service.ts
+PASS syntax-only: DLCGasolineras_Laboratorio22/server/src/sales/tax-policy.controller.ts
+PASS syntax-only: DLCGasolineras_Laboratorio22/server/src/sales/tax-policy.dto.ts
+PASS syntax-only: DLCGasolineras_Laboratorio22/server/src/sales/tax-policy.service.ts

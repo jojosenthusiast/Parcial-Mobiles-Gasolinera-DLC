@@ -1,0 +1,109 @@
+{
+  "date": "2026-10-06",
+  "project": "sole/DLC",
+  "migration": "0017_fuel_sales.sql",
+  "migrations": 17,
+  "tables": 50,
+  "organizations": 0,
+  "sales": 0,
+  "sale_lines": 0,
+  "sales_checksum": "cf565aa3b6a72f2f3f71132d175426cf3b0110b6e17e84968972a3cd9f7f351d",
+  "sqlTests": [
+    {
+      "test": "runtime_creates_ticket_and_original_snapshot",
+      "result": "PASS"
+    },
+    {
+      "test": "sale_does_not_duplicate_inventory",
+      "result": "PASS"
+    },
+    {
+      "test": "unconfigured_tax_is_null",
+      "result": "PASS"
+    },
+    {
+      "test": "duplicate_dispatch",
+      "result": "PASS"
+    },
+    {
+      "test": "changed_dispatch_amount",
+      "result": "PASS"
+    },
+    {
+      "test": "cross_tenant_sale",
+      "result": "PASS"
+    },
+    {
+      "test": "tax_not_assumed_zero",
+      "result": "PASS"
+    },
+    {
+      "test": "paid_not_available_before_payments",
+      "result": "PASS"
+    },
+    {
+      "test": "changed_original_price",
+      "result": "PASS"
+    },
+    {
+      "test": "changed_original_cost",
+      "result": "PASS"
+    },
+    {
+      "test": "changed_original_volume",
+      "result": "PASS"
+    },
+    {
+      "test": "immutable_ticket",
+      "result": "PASS"
+    },
+    {
+      "test": "immutable_line",
+      "result": "PASS"
+    },
+    {
+      "test": "runtime_cannot_edit_ticket",
+      "result": "PASS"
+    },
+    {
+      "test": "client_cannot_read",
+      "result": "PASS"
+    },
+    {
+      "test": "service_key_cannot_read",
+      "result": "PASS"
+    },
+    {
+      "test": "ticket_without_line_cannot_commit",
+      "result": "PASS"
+    },
+    {
+      "test": "sales_rls",
+      "result": "PASS"
+    },
+    {
+      "test": "fixtures_rolled_back",
+      "result": "PASS"
+    }
+  ],
+  "securityAdvisors": [],
+  "performanceAdvisors": [
+    {
+      "name": "unindexed_foreign_keys",
+      "level": "INFO",
+      "count": 99
+    },
+    {
+      "name": "unused_index",
+      "level": "INFO",
+      "count": 29
+    }
+  ],
+  "localTests": 58,
+  "limitations": [
+    "No Nest build/typecheck or HTTP integration",
+    "No live service concurrency test",
+    "No Mac/Xcode build or Simulator test",
+    "API hosting/login/TLS connection pending"
+  ]
+}
