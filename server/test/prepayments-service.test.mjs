@@ -18,7 +18,7 @@ test('PrepaymentsService module exists before its behavior contract can run', ()
 
 if (source) {
   source = source
-    .replace(/^import .+?;\n/gm, line => line.includes('node:crypto') ? line : '')
+    .replace(/^import .+?;\r?\n/gm, line => line.includes('node:crypto') ? line : '')
     .replace('@Injectable()', '')
     .replace(/@Inject\([^)]+\) /g, '');
   source = [

@@ -5,7 +5,7 @@ import {stripTypeScriptTypes} from 'node:module';
 import {createHash,randomUUID} from 'node:crypto';
 import {Decimal} from 'decimal.js';
 let source=await readFile(new URL('../src/procurement/contamination.service.ts',import.meta.url),'utf8');
-source=source.replace(/^import .+?;\n/gm,'').replace('@Injectable()','').replace(/@Inject\([^)]+\) /g,'');
+source=source.replace(/^import .+?;\r?\n/gm,'').replace('@Injectable()','').replace(/@Inject\([^)]+\) /g,'');
 globalThis.__contaminationDependencies={Decimal,createHash,randomUUID};
 source=`const {Decimal,createHash,randomUUID}=globalThis.__contaminationDependencies;\n`+['BadRequestException','ConflictException','ForbiddenException','NotFoundException'].map(n=>`class ${n} extends Error {}`).join('\n')+source;
 const {ContaminationService}=await import('data:text/javascript;base64,'+Buffer.from(stripTypeScriptTypes(source,{mode:'transform'})).toString('base64'));

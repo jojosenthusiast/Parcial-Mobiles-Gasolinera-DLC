@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { stripTypeScriptTypes } from 'node:module';
 let source=await readFile(new URL('../src/sales/pos.service.ts',import.meta.url),'utf8');
-source=source.replace(/^import .+?;\n/gm,line=>line.includes('node:crypto')?line:'').replace('@Injectable()','').replace(/@Inject\([^)]+\) /g,'');
+source=source.replace(/^import .+?;\r?\n/gm,line=>line.includes('node:crypto')?line:'').replace('@Injectable()','').replace(/@Inject\([^)]+\) /g,'');
 source=['BadRequestException','ConflictException','ForbiddenException','NotFoundException'].map(name=>`class ${name} extends Error {}`).join('\n')+'\n'+source;
 const {PosService}=await import('data:text/javascript;base64,'+Buffer.from(stripTypeScriptTypes(source,{mode:'transform'})).toString('base64'));
 const id='11111111-1111-4111-8111-111111111111',other='22222222-2222-4222-8222-222222222222';

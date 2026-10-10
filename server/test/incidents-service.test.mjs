@@ -4,7 +4,7 @@ import {readFile} from 'node:fs/promises';
 import {stripTypeScriptTypes} from 'node:module';
 import {createHash} from 'node:crypto';
 let source=await readFile(new URL('../src/incidents/incidents.service.ts',import.meta.url),'utf8');
-source=source.replace(/^import .+?;\n/gm,'').replace('@Injectable()','').replace(/@Inject\([^)]+\) /g,'');
+source=source.replace(/^import .+?;\r?\n/gm,'').replace('@Injectable()','').replace(/@Inject\([^)]+\) /g,'');
 source=['BadRequestException','ConflictException','ForbiddenException','NotFoundException'].map(n=>`class ${n} extends Error {}`).join('\n')+'\nconst createHash=globalThis.__incidentTestHash;\n'+source;
 globalThis.__incidentTestHash=createHash;
 const {IncidentsService}=await import('data:text/javascript;base64,'+Buffer.from(stripTypeScriptTypes(source,{mode:'transform'})).toString('base64'));

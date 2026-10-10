@@ -6,7 +6,7 @@ import { stripTypeScriptTypes } from 'node:module';
 // Exercise the actual orchestration class without pretending Nest/pg is built.
 // Only framework decorators/imports are replaced; adapter/business code is kept.
 let source=await readFile(new URL('../src/infrastructure/dispense-device.service.ts',import.meta.url),'utf8');
-source=source.replace(/^import .+?;\n/gm,line=>line.includes("node:crypto")?line:line.includes('selectDispenseAdapter')?
+source=source.replace(/^import .+?;\r?\n/gm,line=>line.includes("node:crypto")?line:line.includes('selectDispenseAdapter')?
   `import { selectDispenseAdapter } from '${new URL('../scripts/dispense-device-adapters.mjs',import.meta.url).href}';\n`:'');
 source=source.replace('@Injectable()','').replace(/@Inject\([^)]+\) /g,'');
 source='class ConflictException extends Error {}\nclass BadRequestException extends Error {}\n'+source;

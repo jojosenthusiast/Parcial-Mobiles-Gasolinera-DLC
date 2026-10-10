@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { stripTypeScriptTypes } from 'node:module';
 
 let source = await readFile(new URL('../src/branches/branches.service.ts', import.meta.url), 'utf8');
-source = source.replace(/^import .+?;\n/gm, '').replace(/@Injectable\(\)\s*/g, '').replace(/@Inject\([^)]+\)\s*/g, '');
+source = source.replace(/^import .+?;\r?\n/gm, '').replace(/@Injectable\(\)\s*/g, '').replace(/@Inject\([^)]+\)\s*/g, '');
 source = [
   'BadRequestException','ConflictException','NotFoundException',
 ].map(name => `class ${name} extends Error { constructor(message){ super(typeof message==='string'?message:JSON.stringify(message)); this.details=message; } }`).join('\n') + '\n' + source;

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {stripTypeScriptTypes} from 'node:module';
 let source=(await readFile(new URL('../src/customers/point-refunds.ts',import.meta.url),'utf8')).split("@Controller(")[0];
-source=source.replace(/^import .+?;\n/gm,'').replace(/@\w+\([^)]*\)\s*/g,'');
+source=source.replace(/^import .+?;\r?\n/gm,'').replace(/@\w+\([^)]*\)\s*/g,'');
 source=['ConflictException','ForbiddenException','NotFoundException'].map(n=>`class ${n} extends Error {}`).join('\n')+source;
 const {PointRefundsService}=await import('data:text/javascript;base64,'+Buffer.from(stripTypeScriptTypes(source,{mode:'transform'})).toString('base64'));
 const id='11111111-1111-4111-8111-111111111111',sale='22222222-2222-4222-8222-222222222222';

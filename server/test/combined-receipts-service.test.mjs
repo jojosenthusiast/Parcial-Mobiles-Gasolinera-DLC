@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { stripTypeScriptTypes } from 'node:module';
 
 let source=await readFile(new URL('../src/sales/sales.service.ts',import.meta.url),'utf8');
-source=source.replace(/^import .+?;\n/gm,line=>line.includes('node:crypto')?line:'').replace('@Injectable()','').replace(/@Inject\([^)]+\) /g,'');
+source=source.replace(/^import .+?;\r?\n/gm,line=>line.includes('node:crypto')?line:'').replace('@Injectable()','').replace(/@Inject\([^)]+\) /g,'');
 source=['BadRequestException','ConflictException','ForbiddenException','NotFoundException'].map(name=>`class ${name} extends Error {}`).join('\n')+'\n'+source;
 const {SalesService}=await import('data:text/javascript;base64,'+Buffer.from(stripTypeScriptTypes(source,{mode:'transform'})).toString('base64'));
 

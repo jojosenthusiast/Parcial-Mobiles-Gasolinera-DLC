@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { stripTypeScriptTypes } from 'node:module';
 
 let source = await readFile(new URL('../src/staff/staff.service.ts', import.meta.url), 'utf8');
-source = source.replace(/^import .+?;\n/gm, '').replace(/@Injectable\(\)\s*/g, '').replace(/@Inject\([^)]+\)\s*/g, '');
+source = source.replace(/^import .+?;\r?\n/gm, '').replace(/@Injectable\(\)\s*/g, '').replace(/@Inject\([^)]+\)\s*/g, '');
 source = `import { createHash } from 'node:crypto';\n` +
   ['BadRequestException','ConflictException','ForbiddenException','NotFoundException'].map(name => `class ${name} extends Error {}`).join('\n') +
   '\n' + source;

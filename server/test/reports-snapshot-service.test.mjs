@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { stripTypeScriptTypes } from 'node:module';
 let source = await readFile(new URL('../src/reports/reports.service.ts', import.meta.url), 'utf8');
-source = source.replace(/^import .+?;\n/gm, '').replace('@Injectable()', '').replace(/@Inject\([^)]+\) /g, '');
+source = source.replace(/^import .+?;\r?\n/gm, '').replace('@Injectable()', '').replace(/@Inject\([^)]+\) /g, '');
 source = `import { createHash } from 'node:crypto';\n` +
   ['BadRequestException','ConflictException','ForbiddenException','NotFoundException','TooManyRequestsException'].map(name => `class ${name} extends Error {}`).join('\n') +
   '\n' + source;

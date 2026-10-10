@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {stripTypeScriptTypes} from 'node:module';
 let source=await readFile(new URL('../src/maintenance/maintenance.service.ts',import.meta.url),'utf8');
-source=source.replace(/^import .+?;\n/gm,'').replace('@Injectable()','').replace(/@Inject\([^)]+\) /g,'');
+source=source.replace(/^import .+?;\r?\n/gm,'').replace('@Injectable()','').replace(/@Inject\([^)]+\) /g,'');
 source=['BadRequestException','ConflictException','ForbiddenException','NotFoundException'].map(n=>`class ${n} extends Error {}`).join('\n')+'\n'+source;
 const {MaintenanceService}=await import('data:text/javascript;base64,'+Buffer.from(stripTypeScriptTypes(source,{mode:'transform'})).toString('base64'));
 const id='11111111-1111-4111-8111-111111111111';
